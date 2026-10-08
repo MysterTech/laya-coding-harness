@@ -2740,7 +2740,7 @@ if __name__ == '__main__':
 
 Run: `.venv/bin/python -m pytest -q tests/test_service.py`
 
-Expected: `7 failed` (takes about 50 s: every test waits for a service that never answers); every failure is `NotImplementedError` or an assertion that the service never came up. Record the output in the task report.
+Expected: `7 failed` (takes about 50 s: every test waits for a service that never answers); every failure is `NotImplementedError` or an assertion that follows from the service never coming up (`test_concurrent_starts_load_once` reports `assert 4 == 3`: all four stub processes exit). Record the output in the task report.
 
 - [ ] **Step 5: Implement**, replacing the stubs with exactly this code
 
