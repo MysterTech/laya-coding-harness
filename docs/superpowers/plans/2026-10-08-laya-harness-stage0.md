@@ -25,7 +25,7 @@ before any task). **Mockup:** spec §4.12 plus `docs/mockups/stage0-check1-*.png
 
 **How this plan was verified (plan preflight):** every code block below was executed in a
 throwaway copy of the repo at commit `1606ae9` (the two later commits, `c52e103` and `d5bba22`, change only the spec and `README.md`) before being written here, and is copied from those
-files, not retyped. In that copy the full suite passed repeatedly (`142 passed, 1 deselected`, after the review rounds of Tasks 1–3), the
+files, not retyped. In that copy the full suite passed repeatedly (`147 passed, 1 deselected` with every task, after the review rounds of Tasks 1–3), the
 controller-only gate passed (`.venv/bin/python -m pytest -q -m real_model` → `1 passed`, cold start
 to ready plus a warm call in 3.6 s), and each task's tests were run against the stubs in plan order
 with later tasks absent: every test failed, none passed against a stub (the RED counts below).
@@ -36,7 +36,7 @@ The user adopted a new target architecture: a Bridge behind Obsidian and web fro
 **Laya as the tier router** and **Obsidian as the memory**. This plan therefore ends early:
 
 - **Execute:** Tasks 1–5, then **Task 8 Step 1** (the real-model smoke test of the service), then
-  the controller gates `.venv/bin/python -m pytest -q` (expected `109 passed, 1 deselected`) and
+  the controller gates `.venv/bin/python -m pytest -q` (expected `114 passed, 1 deselected`) and
   `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
 - **Parked, do not dispatch:** Task 6 (hook client), Task 7 (commands), and Task 8 Steps 2–9
   (console script, setup, acceptance, install). Their verified code stays in this plan for the
@@ -1054,7 +1054,7 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
   `on_session_start(state, source) -> dict`, `on_model_switch(state, to_model, now) -> dict`,
   `switch_pending(state, reply) -> bool`, `on_human_prompt(state, now, reply) -> dict`.
 
-> Revised after review round 1: subagents are recognised by `agent_id` or a `/subagents/` path, never `agent_type` alone; the tail reader skips non-object rows and refuses non-string paths; a mistyped session file falls back to the defaults; a reply's effort is taken as carried; and 28 tests pin the switch edge cases, the tail reader and the session-start resets. `tests/fixtures/payloads.json` holds the payload shapes captured in check 4, with identifiers and prompt text replaced.
+> Revised after review round 1: subagents are recognised by `agent_id` or a `/subagents/` path, never `agent_type` alone; the tail reader skips non-object rows and refuses non-string paths; a mistyped session file falls back to the defaults; a reply's effort is taken as carried; and 33 tests pin the switch edge cases, the tail reader, the session-start resets and a valid state's round trip (review round 2). `tests/fixtures/payloads.json` holds the payload shapes captured in check 4, with identifiers and prompt text replaced.
 
 - [ ] **Step 1: Write the supporting files**
 
@@ -1270,6 +1270,13 @@ def test_bad_timestamp_gives_none(tmp_path, bad):
     assert transcript.last_assistant(str(t)) == {"model": "m", "effort": None, "ts": None}
 
 
+@pytest.mark.parametrize("bad_effort", [{"level": "high"}, 3])
+def test_non_string_effort_counts_as_none(tmp_path, bad_effort):
+    t = tmp_path / "t.jsonl"
+    t.write_text(json.dumps({"type": "assistant", "effort": bad_effort, "message": {"model": "m"}}) + "\n")
+    assert transcript.last_assistant(str(t))["effort"] is None
+
+
 def test_last_assistant_reads_only_the_tail(tmp_path, monkeypatch):
     monkeypatch.setattr(transcript, "TAIL_BYTES", 300)
     t = tmp_path / "t.jsonl"
@@ -1299,11 +1306,24 @@ def test_unsafe_session_id_is_hashed(home):
 
 
 @pytest.mark.parametrize("content", ["null", "[1, 2]", "not json", '{"prompt_count": null}',
-                                     '{"switched_at": "x"}', '{"plan_shown": 1}', '{"prompt_count": true}'])
+                                     '{"switched_at": "x"}', '{"plan_shown": 1}', '{"prompt_count": true}',
+                                     '{"prompt_count": -1}', '{"switched_at": true}'])
 def test_corrupt_session_file_starts_from_defaults(home, content):
     (home / "sessions").mkdir(parents=True)
     (home / "sessions" / "sess-1.json").write_text(content)
     assert session_state.load("sess-1") == DEFAULT
+
+
+def test_a_valid_non_default_state_round_trips(home):
+    """An over-strict type check would silently reset every session (spec §4.6, §4.9)."""
+    state = session_state.on_model_switch(dict(DEFAULT), "claude-opus-4-7", now=1000.0)
+    state = session_state.on_human_prompt(state, 1010.0, None)
+    state.update(prompt_count=5, effort="high", model_line_shown=True, plan_shown=True)
+    session_state.save("sess-1", state)
+    loaded = session_state.load("sess-1")
+    assert loaded == state
+    assert isinstance(loaded["updated"], float)
+    assert (loaded["switched_at"], loaded["first_prompt_after_switch_at"]) == (1000.0, 1010.0)
 
 
 # --- session start (spec §4.6) -------------------------------------------------------------
@@ -1498,7 +1518,7 @@ def on_human_prompt(state: dict, now: float, reply) -> dict:
 
 Run: `.venv/bin/python -m pytest -q tests/test_source_session.py`
 
-Expected: `43 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `48 failed`; every failure is `NotImplementedError`. Record the output in the task report.
 
 - [ ] **Step 5: Implement**, replacing the stubs with exactly this code
 
@@ -1718,11 +1738,11 @@ def on_human_prompt(state: dict, now: float, reply) -> dict:
 
 Run: `.venv/bin/python -m pytest -q tests/test_source_session.py`
 
-Expected: `43 passed`.
+Expected: `48 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `77 passed, 1 deselected`.
+Expected: `82 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -2207,7 +2227,7 @@ Expected: `25 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `102 passed, 1 deselected`.
+Expected: `107 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -2796,7 +2816,7 @@ Expected: `7 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `109 passed, 1 deselected`.
+Expected: `114 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -3675,7 +3695,7 @@ Expected: `23 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `132 passed, 1 deselected`.
+Expected: `137 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -4054,7 +4074,7 @@ Expected: `10 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `142 passed, 1 deselected`.
+Expected: `147 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -4138,7 +4158,7 @@ def test_real_service_answers_the_stage0_questions(configured, home):
   Add `laya-harness setup | status | stop | mode` to the gate profile with the results you observed.
 
 - [ ] **Step 3 (controller): Final gates.** Run `.venv/bin/python -m pytest -q` (expected
-  `142 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
+  `147 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
   Contract-drift check: `git status --porcelain -- docs/` must be empty. The controller commits every
   doc change on its own before code, so an uncommitted doc edit can only have come from a subagent.
 
