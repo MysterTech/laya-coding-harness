@@ -25,7 +25,7 @@ before any task). **Mockup:** spec §4.12 plus `docs/mockups/stage0-check1-*.png
 
 **How this plan was verified (plan preflight):** every code block below was executed in a
 throwaway copy of the repo at commit `1606ae9` (the two later commits, `c52e103` and `d5bba22`, change only the spec and `README.md`) before being written here, and is copied from those
-files, not retyped. In that copy the full suite passed repeatedly (`112 passed, 1 deselected`, after the Task 1 review round), the
+files, not retyped. In that copy the full suite passed repeatedly (`114 passed, 1 deselected`, after the Task 1 and Task 2 review rounds), the
 controller-only gate passed (`.venv/bin/python -m pytest -q -m real_model` → `1 passed`, cold start
 to ready plus a warm call in 3.6 s), and each task's tests were run against the stubs in plan order
 with later tasks absent: every test failed, none passed against a stub (the RED counts below).
@@ -682,66 +682,97 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
   `id, display, family, version, price.input, effort_levels, in_picker, allowed`; fit
   `classes.<class>[]` options of `{"family"|"model", "effort"}`.
 
-> Every value is copied from the spec; the tests assert them verbatim. The data files are written in the GREEN step (the stub step creates only `resources.py`).
+> Revised after review round 1: the tests now compare the question set, the checkpoint and every catalog row by equality with tables copied from the spec, pin the option order, and check the hashes against hashlib (including a multi-chunk file and a fit-table edit). The data files are written in the GREEN step (the stub step creates only `resources.py`).
 
 - [ ] **Step 1: Write the failing tests**
 
 `tests/test_resources.py`:
 
 ```python
+"""The packaged data, compared field by field with tables copied from the spec (§4.5, §4.8, §4.13)."""
+
+import hashlib
+
 from laya_harness import resources
+
+ALL_EFFORT = ["low", "medium", "high", "xhigh", "max"]
+NO_XHIGH = ["low", "medium", "high", "max"]
+
+EXPECTED_QUESTIONS = {
+    "id": "profile_v0",
+    "questions": {
+        "difficulty": {
+            "type": "choice",
+            "instructions": "How much work does the request in this message need?",
+            "criteria": {
+                "quick": "quick question or tiny edit",
+                "routine": "routine single-area change",
+                "multi_file": "multi-file feature or debugging",
+                "architecture": "architecture, migration or hard reasoning",
+            },
+        },
+        "plan_first": {"type": "noul", "instructions": "Should this request be planned before any file is edited?"},
+        "parallel": {"type": "noul", "instructions": "Does it contain independent subtasks that could run in parallel?"},
+    },
+    "display": {
+        "difficulty": {"min_tier_p": 0.8},
+        "plan_first": {"show_threshold": 0.85, "min_chars": 200},
+        "parallel": {"show_threshold": 0.85, "shown": False},
+    },
+}
+
+EXPECTED_CHECKPOINT = {
+    "repo": "aac6fef/laya-mlx",
+    "revision": "047678560251f28113ee8f5df4be82102c7bf336",
+    "weights_sha256": "b9c07bf14be2fa5c78a9193a3e6d840ac80e89e62fc40f425834c3d8a6eaa3de",
+    "files": ["model.safetensors", "rl_agent_config.json", "encoder/config.json", "tokenizer/*", "mlx_config.json"],
+    "required": ["model.safetensors", "rl_agent_config.json", "encoder/config.json",
+                 "tokenizer/tokenizer.json", "tokenizer/tokenizer_config.json"],
+    "settings": {"dtype": "float16", "batch_size": 1, "pad_to_multiple": 128, "max_len": 512},
+    "warmup_words": [0, 60, 150, 260, 380, 600],
+}
+
+
+def _row(display, family, version, price, effort, menu, allowed):
+    return {"display": display, "family": family, "version": version, "price": price,
+            "effort_levels": effort, "in_picker": True, "menu": menu, "allowed": allowed}
+
+
+EXPECTED_MODELS = {  # spec §4.13 starting catalog
+    "claude-opus-5-5": _row("Opus 5.5", "opus", "5.5", {"input": 4.0, "output": 20.0}, ALL_EFFORT, "main", True),
+    "claude-sonnet-5-5": _row("Sonnet 5.5", "sonnet", "5.5", {"input": 2.0, "output": 10.0}, ALL_EFFORT, "main", True),
+    "claude-haiku-5-5": _row("Haiku 5.5", "haiku", "5.5", {"input": 0.1, "output": 0.5, "input_above_100k": 0.5,
+                                                         "output_above_100k": 2.5}, ALL_EFFORT, "main", True),
+    "claude-opus-5": _row("Opus 5", "opus", "5", {"input": 5.0, "output": 25.0}, ALL_EFFORT, "more", False),
+    "claude-opus-4-8": _row("Opus 4.8", "opus", "4.8", {"input": 5.0, "output": 25.0}, ALL_EFFORT, "more", False),
+    "claude-opus-4-7": _row("Opus 4.7", "opus", "4.7", {"input": 5.0, "output": 25.0}, ALL_EFFORT, "more", False),
+    "claude-opus-4-6": _row("Opus 4.6", "opus", "4.6", {"input": 5.0, "output": 25.0}, NO_XHIGH, "more", False),
+    "claude-sonnet-5": _row("Sonnet 5", "sonnet", "5", {"input": 2.0, "output": 10.0}, ALL_EFFORT, "more", False),
+    "claude-sonnet-4-6": _row("Sonnet 4.6", "sonnet", "4.6", {"input": 3.0, "output": 15.0}, NO_XHIGH, "more", False),
+    "claude-haiku-4-5": _row("Haiku 4.5", "haiku", "4.5", {"input": 1.0, "output": 5.0}, [], "more", False),
+    "claude-fable-5-1": _row("Fable 5.1", "fable", "5.1", {"input": 10.0, "output": 50.0}, ALL_EFFORT, "main", False),
+    "claude-fable-5": _row("Fable 5", "fable", "5", {"input": 10.0, "output": 50.0}, ALL_EFFORT, "more", False),
+}
 
 
 def test_question_set_matches_spec_4_8():
     q = resources.questions()
-    assert q["id"] == "profile_v0"
-    assert sorted(q["questions"]) == ["difficulty", "parallel", "plan_first"]
-    assert q["questions"]["difficulty"]["type"] == "choice"
-    assert q["questions"]["difficulty"]["criteria"] == {
-        "quick": "quick question or tiny edit",
-        "routine": "routine single-area change",
-        "multi_file": "multi-file feature or debugging",
-        "architecture": "architecture, migration or hard reasoning",
-    }
-    assert q["questions"]["plan_first"] == {
-        "type": "noul",
-        "instructions": "Should this request be planned before any file is edited?",
-    }
-    assert q["questions"]["parallel"] == {
-        "type": "noul",
-        "instructions": "Does it contain independent subtasks that could run in parallel?",
-    }
-    assert q["display"]["difficulty"]["min_tier_p"] == 0.8
-    assert q["display"]["plan_first"] == {"show_threshold": 0.85, "min_chars": 200}
-    assert q["display"]["parallel"]["shown"] is False
+    assert q == EXPECTED_QUESTIONS
+    assert list(q["questions"]["difficulty"]["criteria"]) == ["quick", "routine", "multi_file", "architecture"]
 
 
 def test_checkpoint_is_pinned_per_spec_4_5():
-    ck = resources.checkpoint()
-    assert ck["repo"] == "aac6fef/laya-mlx"
-    assert ck["revision"] == "047678560251f28113ee8f5df4be82102c7bf336"
-    assert ck["weights_sha256"] == "b9c07bf14be2fa5c78a9193a3e6d840ac80e89e62fc40f425834c3d8a6eaa3de"
-    assert ck["settings"] == {"dtype": "float16", "batch_size": 1, "pad_to_multiple": 128, "max_len": 512}
-    assert ck["required"] == [
-        "model.safetensors",
-        "rl_agent_config.json",
-        "encoder/config.json",
-        "tokenizer/tokenizer.json",
-        "tokenizer/tokenizer_config.json",
-    ]
+    assert resources.checkpoint() == EXPECTED_CHECKPOINT
 
 
 def test_catalog_matches_spec_4_13():
-    models = {m["id"]: m for m in resources.catalog()["models"]}
-    allowed = sorted(i for i, m in models.items() if m["allowed"])
-    assert allowed == ["claude-haiku-5-5", "claude-opus-5-5", "claude-sonnet-5-5"]
-    assert all(m["in_picker"] for m in models.values())
-    assert not models["claude-fable-5-1"]["allowed"] and not models["claude-fable-5"]["allowed"]
-    assert models["claude-haiku-5-5"]["price"]["input"] == 0.1
-    assert models["claude-haiku-4-5"]["effort_levels"] == []
-    assert "xhigh" not in models["claude-opus-4-6"]["effort_levels"]
-    assert "xhigh" not in models["claude-sonnet-4-6"]["effort_levels"]
-    assert len(models) == 12
+    catalog = resources.catalog()
+    assert "docs/reference/model-picker-2026-10-08.png" in catalog["source"]
+    rows = {m["id"]: m for m in catalog["models"]}
+    assert len(rows) == len(catalog["models"]) == 12
+    assert set(rows) == set(EXPECTED_MODELS)
+    for model_id, expected in EXPECTED_MODELS.items():
+        assert rows[model_id] == {"id": model_id, **expected}, model_id
 
 
 def test_fit_table_defaults_match_spec_4_13():
@@ -753,9 +784,20 @@ def test_fit_table_defaults_match_spec_4_13():
     }
 
 
-def test_hashes_are_stable_hex():
-    assert len(resources.questions_sha256()) == 64
-    assert resources.catalog_sha256() == resources.catalog_sha256()
+def test_hashes_match_hashlib(tmp_path, monkeypatch):
+    assert resources.questions_sha256() == hashlib.sha256(resources.QUESTIONS.read_bytes()).hexdigest()
+    both = resources.CATALOG.read_bytes() + resources.FIT.read_bytes()
+    assert resources.catalog_sha256() == hashlib.sha256(both).hexdigest()
+
+    before = resources.catalog_sha256()
+    edited = tmp_path / "fit.json"
+    edited.write_bytes(resources.FIT.read_bytes() + b" ")
+    monkeypatch.setattr(resources, "FIT", edited)
+    assert resources.catalog_sha256() != before  # editing the fit table changes the recorded hash
+
+    big = tmp_path / "big.bin"
+    big.write_bytes(b"x" * (3 * (1 << 20) + 7))  # several 1 MiB chunks, as for the weights
+    assert resources.sha256_file(big) == hashlib.sha256(big.read_bytes()).hexdigest()
 ```
 
 - [ ] **Step 2: Create the modules as stubs**, so the tests fail on behaviour rather than on an import error (golden rule 4)
@@ -3473,7 +3515,7 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
   `unknown_models() -> set`, `status(out=None) -> int`, `stop(out=None) -> int`,
   `set_mode(value, out=None) -> int`, `main(argv) -> int`.
 
-> `setup` is the only network path, and the tests inject the downloader, so no test touches the network. Known limitation, deferred from review of Task 1 (P3-9): a hand-edited invalid `mode` in config.json makes `laya-harness mode` and `status` raise; the hooks still fail silent, and the fix is to edit the file by hand.
+> `setup` is the only network path, and the tests inject the downloader, so no test touches the network. From the Task 2 review: `setup` reuses a checkpoint only when every required file is present and the weights match, and fails if a download stays incomplete (spec §4.5). Known limitation, deferred from review of Task 1 (P3-9): a hand-edited invalid `mode` in config.json makes `laya-harness mode` and `status` raise; the hooks still fail silent, and the fix is to edit the file by hand.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3501,13 +3543,22 @@ def fake_checkpoint(monkeypatch):
     return ck
 
 
-def writer(content):
+def place(model_dir, content, skip=()):
+    """Write every required checkpoint file, with `content` as the weights."""
+    for name in resources.checkpoint()["required"]:
+        if name in skip:
+            continue
+        path = model_dir / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content if name == "model.safetensors" else b"{}")
+
+
+def writer(content, skip=()):
     calls = []
 
     def download(ck, model_dir):
         calls.append(model_dir)
-        model_dir.mkdir(parents=True, exist_ok=True)
-        (model_dir / "model.safetensors").write_bytes(content)
+        place(model_dir, content, skip)
 
     download.calls = calls
     return download
@@ -3527,20 +3578,35 @@ def test_setup_downloads_writes_config_and_prints_snippet(home, fake_checkpoint)
     assert not (home / "sessions" / f"{commands.SETUP_SESSION}.json").exists()
 
 
-def test_setup_reuses_a_matching_checkpoint(home, fake_checkpoint):
+def test_setup_reuses_a_complete_matching_checkpoint(home, fake_checkpoint):
     model_dir = home / "models" / f"laya-mlx@{fake_checkpoint['revision']}"
-    model_dir.mkdir(parents=True)
-    (model_dir / "model.safetensors").write_bytes(FAKE_WEIGHTS)
+    place(model_dir, FAKE_WEIGHTS)
     download = writer(FAKE_WEIGHTS)
     out = io.StringIO()
     assert commands.setup(download=download, out=out) == 0
     assert download.calls == [] and "already in place" in out.getvalue()
 
 
+def test_setup_repairs_a_checkpoint_missing_its_tokenizer(home, fake_checkpoint):
+    model_dir = home / "models" / f"laya-mlx@{fake_checkpoint['revision']}"
+    place(model_dir, FAKE_WEIGHTS, skip=("tokenizer/tokenizer.json",))
+    download = writer(FAKE_WEIGHTS)
+    assert commands.setup(download=download, out=io.StringIO()) == 0
+    assert download.calls == [model_dir]
+    assert (model_dir / "tokenizer" / "tokenizer.json").is_file()
+
+
 def test_setup_rejects_a_checksum_mismatch(home, fake_checkpoint):
     out = io.StringIO()
     assert commands.setup(download=writer(b"tampered"), out=out) == 1
-    assert "do not match" in out.getvalue()
+    assert "does not match" in out.getvalue()
+    assert not (home / "config.json").exists()
+
+
+def test_setup_rejects_an_incomplete_download(home, fake_checkpoint):
+    out = io.StringIO()
+    assert commands.setup(download=writer(FAKE_WEIGHTS, skip=("encoder/config.json",)), out=out) == 1
+    assert "incomplete" in out.getvalue()
     assert not (home / "config.json").exists()
 
 
@@ -3615,6 +3681,9 @@ SETUP_SESSION = 'laya-setup-check'
 def _download(checkpoint: dict, model_dir) -> None:
     raise NotImplementedError
 
+def _complete(model_dir, checkpoint: dict) -> bool:
+    raise NotImplementedError
+
 def setup(download=None, out=None) -> int:
     raise NotImplementedError
 
@@ -3638,7 +3707,7 @@ def main(argv) -> int:
 
 Run: `.venv/bin/python -m pytest -q tests/test_commands.py`
 
-Expected: `8 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `10 failed`; every failure is `NotImplementedError`. Record the output in the task report.
 
 - [ ] **Step 4: Implement**, replacing the stubs with exactly this code
 
@@ -3668,18 +3737,22 @@ def _download(checkpoint: dict, model_dir) -> None:
                       allow_patterns=checkpoint["files"])
 
 
+def _complete(model_dir, checkpoint: dict) -> bool:
+    return all((model_dir / name).is_file() for name in checkpoint["required"])
+
+
 def setup(download=None, out=None) -> int:
     out = out or sys.stdout
     paths.ensure_home()
     ck = resources.checkpoint()
     model_dir = paths.models_dir() / f"laya-mlx@{ck['revision']}"
     weights = model_dir / "model.safetensors"
-    if weights.is_file() and resources.sha256_file(weights) == ck["weights_sha256"]:
+    if _complete(model_dir, ck) and resources.sha256_file(weights) == ck["weights_sha256"]:
         print(f"checkpoint already in place: {model_dir}", file=out)
     else:
         (download or _download)(ck, model_dir)
-        if not weights.is_file() or resources.sha256_file(weights) != ck["weights_sha256"]:
-            print("the downloaded weights do not match the pinned sha256", file=out)
+        if not _complete(model_dir, ck) or resources.sha256_file(weights) != ck["weights_sha256"]:
+            print("the download is incomplete or does not match the pinned sha256", file=out)
             return 1
     cfg = config.load()
     cfg.update(interpreter=sys.executable, model_dir=str(model_dir), repo=ck["repo"], revision=ck["revision"])
@@ -3792,11 +3865,11 @@ with:
 
 Run: `.venv/bin/python -m pytest -q tests/test_commands.py`
 
-Expected: `8 passed`.
+Expected: `10 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `112 passed, 1 deselected`.
+Expected: `114 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -3880,7 +3953,7 @@ def test_real_service_answers_the_stage0_questions(configured, home):
   Add `laya-harness setup | status | stop | mode` to the gate profile with the results you observed.
 
 - [ ] **Step 3 (controller): Final gates.** Run `.venv/bin/python -m pytest -q` (expected
-  `112 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
+  `114 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
   Contract-drift check: `git status --porcelain -- docs/` must be empty. The controller commits every
   doc change on its own before code, so an uncommitted doc edit can only have come from a subagent.
 
