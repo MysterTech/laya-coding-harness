@@ -138,8 +138,10 @@ Contract files here are:
 
 ## Doc and commit conventions
 
-- Local repository on `main`, with no remote. One commit per plan, by the controller only,
-  after the controller gates pass, made directly on `main`.
+- Remote: `origin` is `https://github.com/MysterTech/laya-coding-harness.git`, and `main` tracks
+  `origin/main`. One commit per plan, by the controller only, on `main`, after the controller
+  gates pass. The controller pushes it only after the user approves acceptance (decided
+  2026-10-08). Subagents never push.
 - Docs are git-tracked. Contract docs (the spec and plans) move in their own commit **before**
   the code that implements them.
 - Specs live in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/`, mockups in
