@@ -403,8 +403,10 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
 
 - **Catalog:** `laya_harness/data/claude_code_models.json`, committed. It has one entry per model
   and version in the desktop app's model picker: `id`, `display` name, `family`, `version`,
-  `price` (input, output and cache-read per MTok), `effort_levels` (empty for a model that takes
-  none), `in_picker` and `allowed`. The user or controller confirms `in_picker` when the catalog
+  `price` (input and output per MTok, plus `input_above_100k` and `output_above_100k` where pricing
+  is tiered; cache-read prices are left out until a later stage uses them), `effort_levels` (empty
+  for a model that takes none), `in_picker`, `menu` (`main` or `more`) and `allowed`, under a
+  top-level `source` note that names where the values came from. The user or controller confirms `in_picker` when the catalog
   is refreshed.
   - **Fable is never allowed.**
   - The newest version in each family is allowed by default. Older versions are listed with
@@ -428,8 +430,10 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
     | Sonnet 5 | `claude-sonnet-5` | More models | opt-in | $2 / $10 | low–max |
     | Sonnet 4.6 | `claude-sonnet-4-6` | More models | opt-in | $3 / $15 | low, medium, high, max |
     | Haiku 4.5 | `claude-haiku-4-5` | More models | opt-in | $1 / $5 | none |
-    | Fable 5.1, Fable 5 | — | listed ("requires usage credits") | **never** | — | — |
+    | Fable 5.1, Fable 5 | `claude-fable-5-1`, `claude-fable-5` | listed ("requires usage credits") | **never** | $10 / $50 | low–max |
 
+  - The Fable entries exist only so that the catalog recognises them and the rule can refuse
+    them; their values are never used for a suggestion.
   - Haiku 5.5 was released on 2026-10-07. Anthropic positions it for high-volume work such as
     classification, routing, extraction and subagent tasks, not specifically for coding. It is
     in the default fit table only for quick tasks, and stage 2 checks how it does there.
