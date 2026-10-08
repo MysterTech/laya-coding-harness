@@ -220,7 +220,8 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
      `~/.laya-harness/models/laya-mlx@<sha>`, and checks the weights' sha256. A matching copy
      already in place is reused; check 6 left one there;
   3. writes `config.json`: interpreter path, model directory, repo and SHA, port `47913`, and
-     mode `show`;
+     mode `show`. The file's other fields are `model_mode` (`real`, or `fake` for tests and
+     acceptance step 1, with `fake_answers`) and `idle_seconds` (900);
   4. runs the exact registered hook argv once with a sample input;
   5. prints the `settings.json` snippet. It never edits `settings.json` itself.
 
@@ -339,7 +340,7 @@ failures included,** unless the mode is `off`.
 | Group | Fields |
 |---|---|
 | Keys | `schema_version`, `ts`, `session_id`, `prompt_id`, `transcript_path`, `cwd`, `source` |
-| Outcome | `status`: decided, skipped (non-human prompt, not sent), started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, or `suppress_reason`: below_threshold, not_first_prompt, not_human, plan_mode, already_shown, too_short, no_fit or log_only; `suggestion` (model id, effort, class) |
+| Outcome | `status`: decided, skipped (non-human prompt, not sent), started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, and `suppress_reason` recorded per line as `{model, plan}`, each one of: below_threshold, not_first_prompt, not_human, plan_mode, already_shown, too_short, no_fit or log_only; `suggestion` (model id, effort, class) |
 | Input | `prompt`, `truncated` (from Laya's `usage`) |
 | Laya output | the raw `answers` and `usage` |
 | Versions | `checkpoint` (repo, SHA), `question_set` (id, sha256), `laya_mlx`, `laya_harness`, `adapter_rules`, `catalog` (sha256 of the catalog and the fit table) |
