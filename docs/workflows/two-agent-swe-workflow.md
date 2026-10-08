@@ -1,7 +1,7 @@
 # Two-Agent SWE Workflow — laya-harness Gate Profile
 
-> **Status: draft, awaiting the user's sign-off (2026-10-08).** No implementer runs until it is
-> signed off.
+> **Status: signed off by the user on 2026-10-08.** TDD stays on (golden rule 4), and plan
+> commits go directly on `main`.
 >
 > **The workflow itself lives in the portable core:**
 > `~/.claude/workflows/two-agent-swe-workflow.md`, which defines the roles, golden rules,
