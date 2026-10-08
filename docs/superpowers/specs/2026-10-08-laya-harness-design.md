@@ -28,6 +28,31 @@ Boundaries that every stage keeps:
   chance on unseen typed decisions (0.362) and over-confident as shipped. Training on the
   user's own history (stage 3) is expected to be necessary.
 
+### 1.1 System 1 under a System-2 harness
+
+Laya is **System 1**: fast, automatic, run on every prompt, costing no tokens, offering
+impressions with a confidence and never deliberating or acting. Upstream describes it the same
+way: a "System 1 decision engine", whose main call is `system_one`. Claude Code and Codex are
+**System 2**: slow, deliberate and in charge, and so is the user. Five principles follow, and
+every stage keeps them:
+
+- **P1. Feel instant.** System 1 adds no noticeable wait. The typical cost is about 0.13 s (check
+  6). Any longer wait is a defect to be minimised, not a feature. The up-to-4 s wait on a cold
+  first prompt (D7) is a known exception, forced by unloading the model on an 8 GiB Mac. Stage 2
+  treats the idle-timeout or resident-service question as core quality, not tuning.
+- **P2. Silent when unsure.** Below its threshold laya says nothing. It never fills silence with
+  low-confidence advice.
+- **P3. System 2 decides.** A suggestion never restricts the harness or the user. Stage 4's notes
+  to the harness are hints, with their confidence, sent only for fields that passed measurement.
+- **P4. Guard against anchoring.** System 2 tends to endorse whatever System 1 suggests. A note
+  such as "quick task" must never lead Claude to investigate less than the task needs. Notes are
+  worded as considerations, never as limits, and stage 2 checks whether notes change the
+  harness's behaviour for the worse.
+- **P5. Intuition earns trust through feedback.** Intuitive judgement is reliable only in a
+  regular environment with quick, clear feedback (Kahneman and Klein, 2009). The decision log
+  and stages 2–3 supply that feedback, through what actually ran, what it cost, and where the
+  user interrupted or corrected. Until a field is measured, its numbers are untrusted.
+
 ## 2. Architecture (all stages)
 
 ```
