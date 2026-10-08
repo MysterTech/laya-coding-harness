@@ -217,8 +217,10 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
   1. creates `~/.laya-harness` with mode 0700;
   2. downloads the pinned commit, only the files laya-mlx needs (`model.safetensors`,
      `rl_agent_config.json`, `encoder/config.json`, `tokenizer/*`, `mlx_config.json`), into
-     `~/.laya-harness/models/laya-mlx@<sha>`, and checks the weights' sha256. A matching copy
-     already in place is reused; check 6 left one there;
+     `~/.laya-harness/models/laya-mlx@<sha>`, and checks the weights' sha256. A copy already in
+     place is reused only when every required file is present and the weights match; check 6
+     left one there. If a download leaves a required file missing or the weights wrong, setup
+     fails;
   3. writes `config.json`: interpreter path, model directory, repo and SHA, port `47913`, and
      mode `show`. The file's other fields are `model_mode` (`real`, or `fake` for tests and
      acceptance step 1, with `fake_answers`) and `idle_seconds` (900);
@@ -277,9 +279,9 @@ records its sha256.
 
 | Field | Type | Question | Shown when |
 |---|---|---|---|
-| `difficulty` | choice | *quick question or tiny edit* / *routine single-area change* / *multi-file feature or debugging* / *architecture, migration or hard reasoning* | tier probability ≥ 0.8 (§4.9) |
+| `difficulty` | choice | How much work does the request in this message need? Options, in this order: *quick question or tiny edit* / *routine single-area change* / *multi-file feature or debugging* / *architecture, migration or hard reasoning* | tier probability ≥ 0.8 (§4.9) |
 | `plan_first` | noul | Should this request be planned before any file is edited? | noul ≥ 0.85 plus the MODE rules |
-| `parallel` | noul | Does it contain independent subtasks that could run in parallel? | never in stage 0 (logged only) |
+| `parallel` | noul | Does it contain independent subtasks that could run in parallel? | never in stage 0 (logged only); its threshold of 0.85 is recorded for stage 4 |
 
 Choice and yes/no only, because upstream calls ordinal `score` the weakest question type.
 
@@ -415,7 +417,7 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
   - **Starting catalog.** The picker contents come from the user's screenshot
     (`docs/reference/model-picker-2026-10-08.png`). IDs and prices come from the models
     overview and the Haiku 5.5 page on platform.claude.com (read 2026-10-08), and the older
-    versions' effort levels from the Claude API reference (cached 2026-09-25). The IDs of the
+    versions' effort levels from the effort docs on platform.claude.com (read 2026-10-08). The IDs of the
     older versions also appear in the user's transcripts.
 
     | Model | ID | Picker | Allowed by default | Price in / out per MTok | Effort levels |
