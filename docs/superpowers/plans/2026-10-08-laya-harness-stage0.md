@@ -25,7 +25,7 @@ before any task). **Mockup:** spec §4.12 plus `docs/mockups/stage0-check1-*.png
 
 **How this plan was verified (plan preflight):** every code block below was executed in a
 throwaway copy of the repo at commit `1606ae9` (the two later commits, `c52e103` and `d5bba22`, change only the spec and `README.md`) before being written here, and is copied from those
-files, not retyped. In that copy the full suite passed three times (`94 passed, 1 deselected`), the
+files, not retyped. In that copy the full suite passed repeatedly (`112 passed, 1 deselected`, after the Task 1 review round), the
 controller-only gate passed (`.venv/bin/python -m pytest -q -m real_model` → `1 passed`, cold start
 to ready plus a warm call in 3.6 s), and each task's tests were run against the stubs in plan order
 with later tasks absent: every test failed, none passed against a stub (the RED counts below).
@@ -105,7 +105,7 @@ At every task boundary, diff this plan's code blocks against the files on disk a
 - `tests/conftest.py`: fixtures `home`, `free_port`, `configured`; constant `FAKE_ANSWERS`;
   helper `write_config(home, **changes) -> dict`. Later tasks import these.
 
-> The `[project.scripts]` entry registers the `laya-harness` console script; the controller reinstalls the package in Task 7 (pip is not a subagent gate). Tests do not need it.
+> Revised after review round 1 (findings P2-1 to P2-4 and P3-5 to P3-8): a unique temporary file per atomic write, the real-home guard also refusing its parents and children, existing directories and log files tightened to 0700/0600, the port range checked, no ambient LAYA_HARNESS_HOME in tests, and tests pinning each of these. The `[project.scripts]` entry registers the `laya-harness` console script; the controller reinstalls the package in Task 7 (pip is not a subagent gate). Tests do not need it.
 
 - [ ] **Step 1: Write the supporting files**
 
@@ -144,8 +144,13 @@ addopts = "-m 'not real_model'"
 `tests/conftest.py`:
 
 ```python
-"""Test-wide guards (spec §4.4, §4.11): no test reaches the network, the real state
-directory or the real port."""
+"""Test-wide guards (spec §4.4, §4.11).
+
+Enforced here: HF_HUB_OFFLINE=1 (no downloads); LAYA_HARNESS_TEST=1, under which
+`paths.home()` refuses ~/.laya-harness and `config.port()` refuses 47913; and no ambient
+LAYA_HARNESS_HOME. Code that opens a socket must take its port from `config.port()` or the
+`free_port` fixture.
+"""
 
 import json
 import os
@@ -166,6 +171,12 @@ FAKE_ANSWERS = {
     "plan_first": {"type": "noul", "noul": 0.2},
     "parallel": {"type": "noul", "noul": 0.1},
 }
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_home(monkeypatch):
+    """A test that forgets the `home` fixture fails instead of using a shell's LAYA_HARNESS_HOME."""
+    monkeypatch.delenv("LAYA_HARNESS_HOME", raising=False)
 
 
 @pytest.fixture
@@ -213,19 +224,40 @@ def write_config(home, **changes):
 
 ```python
 import json
+import os
 import stat
+import sys
 
 import pytest
 
 from laya_harness import config, paths
 
 
+def mode_of(path):
+    return stat.S_IMODE(path.stat().st_mode)
+
+
 def test_home_honours_override_under_test_flag(home):
     assert paths.home() == home
 
 
-def test_home_refuses_real_state_dir_under_test_flag(monkeypatch):
-    monkeypatch.setenv("LAYA_HARNESS_HOME", str(paths.REAL_HOME))
+@pytest.mark.parametrize("alias", [
+    str(paths.REAL_HOME),
+    "~/.laya-harness",
+    f"{paths.REAL_HOME}/.",
+    str(paths.REAL_HOME / "inside"),
+    str(paths.REAL_HOME.parent),
+])
+def test_home_refuses_real_state_dir_its_children_and_parents(monkeypatch, alias):
+    monkeypatch.setenv("LAYA_HARNESS_HOME", alias)
+    with pytest.raises(paths.StateDirError):
+        paths.home()
+
+
+def test_home_refuses_a_symlink_to_the_real_state_dir(monkeypatch, tmp_path):
+    link = tmp_path / "link"
+    link.symlink_to(paths.REAL_HOME)
+    monkeypatch.setenv("LAYA_HARNESS_HOME", str(link))
     with pytest.raises(paths.StateDirError):
         paths.home()
 
@@ -242,28 +274,55 @@ def test_override_ignored_without_test_flag(monkeypatch, tmp_path):
     assert paths.home() == paths.REAL_HOME
 
 
+def test_state_file_names(home):
+    names = [p.name for p in (paths.config_path(), paths.decisions_path(), paths.client_log(),
+                              paths.service_log(), paths.sessions_dir(), paths.models_dir())]
+    assert names == ["config.json", "decisions.jsonl", "client.log", "service.log", "sessions", "models"]
+    assert {p.parent for p in (paths.config_path(), paths.sessions_dir(), paths.models_dir())} == {home}
+
+
 def test_ensure_home_is_private(home):
     paths.ensure_home()
-    assert stat.S_IMODE(home.stat().st_mode) == 0o700
-    assert (home / "sessions").is_dir()
+    assert mode_of(home) == 0o700 and mode_of(home / "sessions") == 0o700
+
+
+def test_ensure_home_tightens_existing_dirs(home):
+    (home / "sessions").mkdir(parents=True)
+    home.chmod(0o755)
+    (home / "sessions").chmod(0o755)
+    paths.ensure_home()
+    assert mode_of(home) == 0o700 and mode_of(home / "sessions") == 0o700
 
 
 def test_load_returns_defaults_without_file(home):
     cfg = config.load()
     assert cfg["port"] == 47913 and cfg["mode"] == "show" and cfg["model_mode"] == "real"
     assert cfg["idle_seconds"] == 900
+    assert cfg["interpreter"] is None and cfg["model_dir"] is None
+
+
+def test_load_does_not_share_the_defaults(home):
+    cfg = config.load()
+    cfg["port"] = 1
+    assert config.DEFAULTS["port"] == 47913 and config.load()["port"] == 47913
 
 
 def test_save_round_trips_and_is_private(home):
     config.save({"port": 5555, "mode": "log-only"})
     assert config.load()["mode"] == "log-only"
-    mode = stat.S_IMODE((home / "config.json").stat().st_mode)
-    assert mode == 0o600
+    assert mode_of(home / "config.json") == 0o600
     assert json.loads((home / "config.json").read_text())["port"] == 5555
 
 
+@pytest.mark.parametrize("mode", ["show", "log-only", "off"])
+def test_every_spec_mode_is_accepted(home, mode):
+    config.save({"mode": mode})
+    assert config.load()["mode"] == mode
+
+
 def test_unknown_mode_rejected(home):
-    config.save({"mode": "loud"})
+    home.mkdir(parents=True)
+    (home / "config.json").write_text(json.dumps({"mode": "loud"}))
     with pytest.raises(ValueError):
         config.load()
 
@@ -271,7 +330,48 @@ def test_unknown_mode_rejected(home):
 def test_port_refuses_real_port_under_test_flag(home):
     with pytest.raises(paths.StateDirError):
         config.port({"port": 47913})
+    with pytest.raises(paths.StateDirError):
+        config.port({"port": "47913"})
     assert config.port({"port": 5555}) == 5555
+
+
+def test_port_allows_the_default_outside_tests(monkeypatch):
+    monkeypatch.setenv("LAYA_HARNESS_TEST", "0")
+    assert config.port({"port": 47913}) == 47913
+
+
+@pytest.mark.parametrize("bad", [0, -1, 65536])
+def test_port_out_of_range_is_rejected(bad):
+    with pytest.raises(ValueError):
+        config.port({"port": bad})
+
+
+def test_interpreter_defaults_to_the_running_python():
+    assert config.interpreter({"interpreter": None}) == sys.executable
+    assert config.interpreter({"interpreter": "/x/python"}) == "/x/python"
+
+
+def test_write_private_uses_unique_temps_and_cleans_up(home, monkeypatch):
+    paths.ensure_home()
+    target = home / "state.json"
+    seen, real_replace = [], os.replace
+
+    def recording(src, dst):
+        seen.append(os.path.basename(src))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(paths.os, "replace", recording)
+    paths.write_private(target, "a")
+    paths.write_private(target, "b")
+    assert len(set(seen)) == 2 and target.read_text() == "b" and mode_of(target) == 0o600
+
+    def failing(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(paths.os, "replace", failing)
+    with pytest.raises(OSError):
+        paths.write_private(target, "c")
+    assert target.read_text() == "b" and list(home.glob("*.tmp")) == []
 
 
 def test_append_private_creates_user_only_file(home):
@@ -279,8 +379,16 @@ def test_append_private_creates_user_only_file(home):
     target = home / "log.jsonl"
     paths.append_private(target, "a")
     paths.append_private(target, "b\n")
-    assert target.read_text() == "a\nb\n"
-    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    assert target.read_text() == "a\nb\n" and mode_of(target) == 0o600
+
+
+def test_append_private_tightens_an_existing_file(home):
+    paths.ensure_home()
+    target = home / "loose.log"
+    target.write_text("old\n")
+    target.chmod(0o644)
+    paths.append_private(target, "new")
+    assert target.read_text() == "old\nnew\n" and mode_of(target) == 0o600
 ```
 
 - [ ] **Step 3: Create the modules as stubs**, so the tests fail on behaviour rather than on an import error (golden rule 4)
@@ -293,7 +401,9 @@ def test_append_private_creates_user_only_file(home):
 `LAYA_HARNESS_HOME` moves the state directory in tests only: it is honoured only when
 `LAYA_HARNESS_TEST=1`, and under that flag the real `~/.laya-harness` is refused.
 """
+import contextlib
 import os
+import tempfile
 from pathlib import Path
 REAL_HOME = Path.home() / '.laya-harness'
 TEST_FLAG = 'LAYA_HARNESS_TEST'
@@ -330,7 +440,11 @@ def models_dir() -> Path:
     raise NotImplementedError
 
 def write_private(path: Path, text: str) -> None:
-    """Write a file readable only by the user, replacing it atomically."""
+    """Write a file readable only by the user, replacing it atomically.
+
+    Each write uses its own temporary file (mkstemp creates it 0600 in the same directory), so
+    concurrent writers never share one, and the temporary file is removed if anything fails.
+    """
     raise NotImplementedError
 
 def append_private(path: Path, line: str) -> None:
@@ -370,7 +484,7 @@ def interpreter(cfg: dict) -> str:
 
 Run: `.venv/bin/python -m pytest -q tests/test_paths_config.py`
 
-Expected: `10 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `28 failed`; every failure is `NotImplementedError`. Record the output in the task report.
 
 - [ ] **Step 5: Implement**, replacing the stubs with exactly this code
 
@@ -383,7 +497,9 @@ Expected: `10 failed`; every failure is `NotImplementedError`. Record the output
 `LAYA_HARNESS_TEST=1`, and under that flag the real `~/.laya-harness` is refused.
 """
 
+import contextlib
 import os
+import tempfile
 from pathlib import Path
 
 REAL_HOME = Path.home() / ".laya-harness"
@@ -406,8 +522,9 @@ def home() -> Path:
     if not override:
         raise StateDirError("tests must set LAYA_HARNESS_HOME")
     path = Path(override).expanduser()
-    if path.resolve() == REAL_HOME.resolve():
-        raise StateDirError("tests must not use ~/.laya-harness")
+    resolved, real = path.resolve(), REAL_HOME.resolve()
+    if resolved == real or real in resolved.parents or resolved in real.parents:
+        raise StateDirError("tests must not use ~/.laya-harness, a directory inside it, or one of its parents")
     return path
 
 
@@ -415,7 +532,9 @@ def ensure_home() -> Path:
     path = home()
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
     path.chmod(0o700)
-    (path / "sessions").mkdir(mode=0o700, exist_ok=True)
+    sessions = path / "sessions"
+    sessions.mkdir(mode=0o700, exist_ok=True)
+    sessions.chmod(0o700)
     return path
 
 
@@ -444,18 +563,26 @@ def models_dir() -> Path:
 
 
 def write_private(path: Path, text: str) -> None:
-    """Write a file readable only by the user, replacing it atomically."""
-    tmp = path.with_name(path.name + ".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(text)
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, path)
+    """Write a file readable only by the user, replacing it atomically.
+
+    Each write uses its own temporary file (mkstemp creates it 0600 in the same directory), so
+    concurrent writers never share one, and the temporary file is removed if anything fails.
+    """
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 def append_private(path: Path, line: str) -> None:
     """Append one line to a file readable only by the user."""
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    os.fchmod(fd, 0o600)  # tighten a file that already existed with looser permissions
     with os.fdopen(fd, "a", encoding="utf-8") as f:
         f.write(line if line.endswith("\n") else line + "\n")
 ```
@@ -503,6 +630,8 @@ def save(cfg: dict) -> None:
 
 def port(cfg: dict) -> int:
     value = int(cfg["port"])
+    if not 1 <= value <= 65535:
+        raise ValueError(f"port out of range: {value}")
     if paths.testing() and value == DEFAULT_PORT:
         raise paths.StateDirError("tests must not use port 47913")
     return value
@@ -516,11 +645,11 @@ def interpreter(cfg: dict) -> str:
 
 Run: `.venv/bin/python -m pytest -q tests/test_paths_config.py`
 
-Expected: `10 passed`.
+Expected: `28 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `11 passed, 1 deselected`.
+Expected: `29 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -838,7 +967,7 @@ Expected: `5 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `16 passed, 1 deselected`.
+Expected: `34 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -1366,7 +1495,7 @@ Expected: `15 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `31 passed, 1 deselected`.
+Expected: `49 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -1851,7 +1980,7 @@ Expected: `25 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `56 passed, 1 deselected`.
+Expected: `74 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -2440,7 +2569,7 @@ Expected: `7 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `63 passed, 1 deselected`.
+Expected: `81 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -3319,7 +3448,7 @@ Expected: `23 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `86 passed, 1 deselected`.
+Expected: `104 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -3344,7 +3473,7 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
   `unknown_models() -> set`, `status(out=None) -> int`, `stop(out=None) -> int`,
   `set_mode(value, out=None) -> int`, `main(argv) -> int`.
 
-> `setup` is the only network path, and the tests inject the downloader, so no test touches the network.
+> `setup` is the only network path, and the tests inject the downloader, so no test touches the network. Known limitation, deferred from review of Task 1 (P3-9): a hand-edited invalid `mode` in config.json makes `laya-harness mode` and `status` raise; the hooks still fail silent, and the fix is to edit the file by hand.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3667,7 +3796,7 @@ Expected: `8 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `94 passed, 1 deselected`.
+Expected: `112 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -3751,8 +3880,9 @@ def test_real_service_answers_the_stage0_questions(configured, home):
   Add `laya-harness setup | status | stop | mode` to the gate profile with the results you observed.
 
 - [ ] **Step 3 (controller): Final gates.** Run `.venv/bin/python -m pytest -q` (expected
-  `94 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
-  Contract-drift check: `git diff refs/laywip/stage0/task-0 -- docs/` must be empty.
+  `112 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
+  Contract-drift check: `git status --porcelain -- docs/` must be empty. The controller commits every
+  doc change on its own before code, so an uncommitted doc edit can only have come from a subagent.
 
 - [ ] **Step 4 (controller): Setup and acceptance hooks.** Run `.venv/bin/laya-harness setup`
   (expected: `checkpoint already in place`, then the snippet). Write the snippet's `hooks` object
