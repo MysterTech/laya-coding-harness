@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Draft for sign-off (documentation gate). The mockup is completed by check 1's screenshots. |
+| Status | Draft for sign-off (documentation gate). Checks 1–5 done (Appendix C); mockup in §4.12 and `docs/mockups/`. |
 | Date | 2026-10-08 |
 | Scope | The whole system at roadmap level. Stage 0 in implementable detail. |
 | Review | Stage 0 was put through a six-lens design review before this draft (Appendix B). |
@@ -71,12 +71,15 @@ Each stage updates this document before any of its code is written.
 
 ### 4.1 Flow
 
-Two hooks run the same client.
+Three hooks run the same client.
 
-- **SessionStart** records the session's model in a session file and makes sure the service is
-  running. It never waits for the model to load (decision D7) and prints nothing.
+- **SessionStart** creates the session file and makes sure the service is running. It never
+  waits for the model to load (decision D7) and prints nothing. In the desktop app it does not
+  receive the model (Appendix C).
 - **UserPromptSubmit** sends the prompt to the service, applies the Claude Code adapter rules,
   prints at most two lines for the user, and logs one row.
+- **PostModelSwitch** records the new model when the user changes it mid-session, and prints
+  nothing.
 
 The service runs laya-mlx, answers three questions per prompt, and exits after 15 idle minutes.
 
@@ -175,29 +178,35 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
 
 The client owns session state, one file per session:
 `~/.laya-harness/sessions/<session_id>.json` (mode 0600), holding
-`{model, model_source, prompt_count, plan_shown, updated}`.
+`{model, effort, model_source, prompt_count, model_line_shown, plan_shown, updated}`.
 
-- SessionStart writes `model` only when its input contains one, and never replaces a known
-  model with a missing one. The `startup` and `fork` sources reset `prompt_count`.
-- On each **human** prompt (§4.7), the client increments `prompt_count` before calling the
-  service.
-- If check 2 shows that SessionStart misses the model chosen in the desktop app's dropdown, a
-  `PostModelSwitch` hook is added and sets `model` from `to_model`. It also prints nothing.
+The desktop app gives hooks **no model or effort on a session's first prompt** (Appendix C), so
+both start unknown. They are filled in for logging as they become visible:
+
+- `PostModelSwitch` sets `model` from `to_model` (`model_source: post_model_switch`).
+- From the second human prompt on, the client reads the transcript's last assistant row and
+  takes `message.model` and `effort` (`model_source: transcript`). The transcript can lag, so a
+  missing or unreadable transcript leaves the values as they were.
+- The `startup` and `fork` sources reset `prompt_count`. On each **human** prompt (§4.7), the
+  client increments `prompt_count` before calling the service.
 
 ### 4.7 Prompt source
 
 `UserPromptSubmit` also fires on turns the user did not type. Each prompt is classified from
 the hook input:
 
-| Source | Recognised by |
+| Source | Recognised by (observed in check 4) |
 |---|---|
 | task-notification | the prompt starts with `<task-notification` |
-| peer | the prompt starts with the cross-session preamble (exact text captured in check 4) |
-| subagent / workflow | `agent_id` or `agent_type` is present, or `transcript_path` contains `/subagents/` |
+| agent | the prompt starts with `<agent-message` (a subagent handing back) |
+| peer | the prompt starts with `<cross-session-message` (another session) |
+| subagent | `agent_id` or `agent_type` is present, or `transcript_path` contains `/subagents/` (not seen in the desktop app; kept as a guard) |
 | human | everything else |
 
 Non-human prompts are logged with their source. They never show a line and never change
-`prompt_count`. `/loop` and scheduled-task turns look human, which stage 0 accepts.
+`prompt_count`. `/loop` and scheduled-task turns look human, which stage 0 accepts. The
+transcript records each turn's origin exactly (`origin.kind`), and the stage-2 history reader
+uses that instead of these prefixes.
 
 ### 4.8 Questions
 
@@ -224,11 +233,14 @@ it was compared with, the mismatch type, and the channel it will use from stage 
 - **Suggestion:** light → Sonnet 5.5; heavy → Opus 5.5. The effort comes from the more likely
   class within the tier: quick → low, routine → medium, multi-file → high,
   architecture → xhigh.
-- Applies **only on the first human prompt of a session** (`prompt_count` was 0). Switching
-  models later throws away the model-scoped prompt cache.
-- Compared with the session model, using canonical names with `[1m]` and date suffixes
-  stripped. Effort is compared with `$CLAUDE_EFFORT` only if hooks receive it (check 3). Shown
-  only when something known differs.
+- Shown **only on the first human prompt of a session** (`prompt_count` was 0), at most once.
+  A dropdown change made during the first turn applies from turn 2, while the context is still
+  small. Switching later throws away more of the model-scoped prompt cache.
+- **Not compared with the current setting** (decision D10), because the app gives hooks no model
+  or effort on the first prompt. The line names what fits the task, and the user checks it
+  against the dropdown. The model and effort the session actually runs are logged as they
+  become visible (§4.6), so stage 2 can measure how often the line was redundant or followed.
+  Compared suggestions are deferred to stage 4.
 - If the service fails on that prompt, the session gets no model line. That is logged, and
   acceptance records how often it happens.
 - Channel: user.
@@ -258,11 +270,11 @@ failures included,** unless the mode is `off`.
 | Group | Fields |
 |---|---|
 | Keys | `schema_version`, `ts`, `session_id`, `prompt_id`, `transcript_path`, `cwd`, `source` |
-| Outcome | `status`: decided, started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, or `suppress_reason`: below_threshold, same_setting, not_first_prompt, not_human, plan_mode, already_shown, too_short or log_only |
+| Outcome | `status`: decided, started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, or `suppress_reason`: below_threshold, not_first_prompt, not_human, plan_mode, already_shown, too_short or log_only |
 | Input | `prompt`, `truncated` (from Laya's `usage`) |
 | Laya output | the raw `answers` and `usage` |
 | Versions | `checkpoint` (repo, SHA), `question_set` (id, sha256), `laya_mlx`, `laya_harness`, `adapter_rules` |
-| Compared state | session `model` and `model_source`, `permission_mode`, `claude_effort` if present |
+| Session state | `model`, `effort` and `model_source` as known at that prompt (§4.6), `permission_mode` |
 | Timing | `latency_ms`, `cold` |
 
 - Rows join to Claude Code transcripts on `prompt_id` (confirmed in check 4).
@@ -290,19 +302,27 @@ and not added to Claude's context: the hooks docs say so, and the bundled Claude
 and 2.1.289 do not pass it to the model. At most two lines, joined by `\n`, each at most 120
 characters. Stage 0 never blocks a prompt and never adds `additionalContext`.
 
-**This table, plus the two Code-tab screenshots from check 1, is the mockup.**
+**Rendering (check 1).** The Code tab shows the message as a collapsible *Claude Code notice*
+and puts `UserPromptSubmit says:` in front of each line. That prefix does not name laya, so
+every line keeps its own `laya ·`. Long lines wrap. Screenshots of the surface, taken with the
+check-1 test strings, which differ slightly from the final copy below:
+[single line](../../mockups/stage0-check1-single-line.png),
+[two lines](../../mockups/stage0-check1-two-lines.png), and
+[a machine turn wrongly given a line](../../mockups/stage0-check4-machine-turn.png), which §4.7
+now prevents.
+
+**This copy deck, plus those screenshots, is the mockup.**
 
 | State | Exact text |
 |---|---|
-| (a) first human prompt, model differs, effort known | `laya · light task (p=0.78) → Sonnet 5.5 at low effort fits; you're on Opus 5.5 at high` |
-| (a′) as (a), effort unknown (check 3 fails) | `laya · light task (p=0.78) → Sonnet 5.5 at low effort fits; you're on Opus 5.5` |
-| (b) first human prompt, same model, effort differs (effort known) | `laya · heavy task (p=0.64) → high effort fits; you're on Opus 5.5 at xhigh` |
-| (c) model unknown (check 2 fails), effort known and differs | `laya · light task (p=0.78) → low effort fits; you're on high` |
-| (d) plan first | `laya · reads like a multi-step change (p=0.88) → switch to Plan mode, or tell Claude to plan first` |
-| (e) both on the first human prompt | `laya · heavy task (p=0.71) → Opus 5.5 at xhigh effort fits; you're on Sonnet 5.5 at medium` then (d) on a second line |
-| (g) nothing shown | the service is starting, loading, not ready, slow or erroring; the prompt is not human; a score is below its threshold; the setting already matches; not the first prompt (model line); plan already shown, already in Plan mode, or the prompt is too short; mode is `log-only` or `off` |
+| (a) first human prompt, light tier ≥ 0.6 | `laya · light task (p=0.78) → Sonnet 5.5 at low effort fits this task` |
+| (a) first human prompt, heavy tier ≥ 0.6 | `laya · heavy task (p=0.71) → Opus 5.5 at xhigh effort fits this task` |
+| (d) plan first | `laya · reads like a multi-step change (p=0.88) → Plan mode (mode menu, then 4), or tell Claude to plan first` |
+| (e) both on the first human prompt | (a) on the first line, (d) on the second |
+| (g) nothing shown | the service is starting, loading, not ready, slow or erroring; the prompt is not human; a score is below its threshold; not the first human prompt (model line); plan already shown, already in Plan mode, or the prompt is too short; mode is `log-only` or `off` |
 
-If check 1 confirms a keyboard shortcut for Plan mode in the Code tab, (d) names it.
+The effort word in (a) follows §4.9: low or medium for the light tier, high or xhigh for the
+heavy tier.
 
 ## 5. Failure handling — laya stays out of the way
 
@@ -318,8 +338,7 @@ If check 1 confirms a keyboard shortcut for Plan mode in the Code tab, (d) names
 | Prompt longer than 512 tokens | Laya keeps the beginning; the row is marked `truncated`. |
 | Stale service after a code or config change | `laya-harness stop`. Every row records the versions that produced it. |
 
-**Explicit hook timeouts:** SessionStart 5 s, UserPromptSubmit 3 s (and PostModelSwitch 3 s, if
-added). The service listens on 127.0.0.1 only. `~/.laya-harness` is mode 0700.
+**Explicit hook timeouts:** SessionStart 5 s, UserPromptSubmit 3 s, PostModelSwitch 3 s. The service listens on 127.0.0.1 only. `~/.laya-harness` is mode 0700.
 
 ## 6. Testing
 
@@ -328,8 +347,10 @@ added). The service listens on 127.0.0.1 only. `~/.laya-harness` is mode 0700.
     ever; the tier sums and the 0.6 gate; MODE eligibility; once per session; no plan line in
     Plan mode; a noul of 0.30 with `confidence` 0.70 shows nothing; the number shown equals the
     gated number exactly;
-  - canonical model names; prompt-source detection on the payloads captured in check 4; the
-    question-file format; assembling a profile; SessionStart prints nothing.
+  - canonical model names; prompt-source detection on the payloads captured in check 4;
+    session-state updates from `PostModelSwitch` and from the transcript, including a missing
+    transcript; the question-file format; assembling a profile; SessionStart and
+    PostModelSwitch print nothing.
 - **Client, process-level.** These run the exact registered argv from the shared function,
   with a temporary `LAYA_HARNESS_HOME` and a free port. Cases: bad event name, garbage stdin,
   service down, slow reply, unexpected reply, a foreign listener returning junk, a listener that
@@ -348,6 +369,8 @@ added). The service listens on 127.0.0.1 only. `~/.laya-harness` is mode 0700.
 
 ## 7. Check first (throwaway, before writing anything to keep)
 
+**Checks 1–5 were run on 2026-10-08; the results are in Appendix C. Check 6 is still to run.**
+
 Checks 1–5 use a throwaway hook in this project's own `.claude/settings.local.json`, which
 records the raw stdin, `$CLAUDE_EFFORT` and timestamps to a scratch file and is removed
 afterwards. Check 6 needs the checkpoint download. **The user is asked before either.** Steps
@@ -360,10 +383,8 @@ that need the desktop app's UI are done by the user, following written steps.
    redone for that surface before sign-off.
 2. **Model.** Pick a non-default model in the dropdown before the first message, then send a
    prompt. Record what SessionStart receives, and whether `PostModelSwitch` fires (and when,
-   relative to UserPromptSubmit) on that pick, on a mid-session change, and on resume. If no
-   model ever arrives, state (c) ships.
-3. **Effort.** Is `$CLAUDE_EFFORT` set in the UserPromptSubmit hook's environment? If not,
-   (a′) ships and (b) is dropped.
+   relative to UserPromptSubmit) on that pick, on a mid-session change, and on resume.
+3. **Effort.** Is `$CLAUDE_EFFORT` set in the UserPromptSubmit hook's environment?
 4. **Payloads.** Trigger a typed prompt, a background subagent reporting back, a background
    Bash command finishing, a message from another session, and a small workflow. For each,
    record whether the hook fired, plus the start of `prompt`, `agent_id`, `agent_type`,
@@ -417,10 +438,10 @@ acceptance):
 ## 10. Install and uninstall
 
 - During acceptance, the hooks live in this project's `.claude/settings.local.json`.
-- At the end of stage 0, two exec-form entries go into the user-level `~/.claude/settings.json`
-  so laya runs in every project: SessionStart (5 s) and UserPromptSubmit (3 s), plus
-  PostModelSwitch (3 s) if check 2 requires it. `setup` prints the snippet and has already run
-  the exact command. **The diff is shown to the user and applied only with approval.**
+- At the end of stage 0, three exec-form entries go into the user-level
+  `~/.claude/settings.json` so laya runs in every project: SessionStart (5 s), UserPromptSubmit
+  (3 s) and PostModelSwitch (3 s). `setup` prints the snippet and has already run the exact
+  command. **The diff is shown to the user and applied only with approval.**
 - `laya-harness mode off` turns laya off without touching settings. Removing the entries
   uninstalls it. `~/.laya-harness` holds every piece of state.
 
@@ -432,8 +453,10 @@ acceptance):
 | Stage 2 | Memory pressure on the 8 GiB Mac: latency after 10–15 idle minutes with sessions open; then set_wired_limit, cache limits, or accepting logged misses. |
 | Stage 2 | Question wording: an effort-scale `difficulty` without topic words, compared on history. |
 | Stage 2 | Checkpoint comparison (English, typed-decisions, multilingual) on a labelled set; tune thresholds on history; apply the prompt-source filter in the history reader. |
+| Stage 2 | How often the uncompared model line (D10) was redundant, and how often it was followed, from the logged session state. |
 | Stage 3 | Refit per-field thresholds and calibration from outcomes and labels. |
-| Stage 4 | MODEL and REASONING as separate suggestions (effort on later prompts; model after clear, compact or resume); harness notes for MODE and PARALLELISM; prompt-stopping never fires on non-human turns; calibrated wording for scores. |
+| Stage 4 | MODEL and REASONING as separate suggestions compared with the current setting (known from the second prompt on): effort on later prompts, model after clear, compact or resume; harness notes for MODE and PARALLELISM; prompt-stopping never fires on non-human turns; calibrated wording for scores. |
+| Stage 5 | CONTEXT advice using SessionStart's `prompt_cache_likely_expired`, `seconds_since_last_response` and `context_tokens`, and PostModelSwitch's `prompt_cache_warm` and `estimated_cache_write_usd` (all observed in check 4). |
 | After D7 | A bounded SessionStart wait, a longer idle timeout, or a launchd agent, chosen from check 6 and acceptance step 4. |
 
 ## Appendix A — Decisions
@@ -449,6 +472,7 @@ acceptance):
 | D7 | 2026-10-08 | No SessionStart wait in stage 0. Measure cold first prompts, then decide. |
 | D8 | 2026-10-08 | Plan-first is shown in stage 0; parallel is logged only. |
 | D9 | 2026-10-08 | Start with the general English checkpoint, pinned by SHA. |
+| D10 | 2026-10-08 | The model/effort line is suggested on the first human prompt without comparison, because hooks cannot see the model or effort then (Appendix C). |
 
 ## Appendix B — Design review (2026-10-07 to 2026-10-08)
 
@@ -489,3 +513,17 @@ was then trimmed to keep stage 0 thin.
 | C3 | Load failures cause a restart loop | §4.4 step 4: `not_ready`, stays bound |
 | C4 | Code changes not picked up | `laya-harness stop`; versions per row |
 | C5 | UI steps and screenshots undefined | §7 and §8: UI steps done by the user |
+
+## Appendix C — Check results (2026-10-08)
+
+Run in the desktop app's Code tab (`CLAUDE_CODE_ENTRYPOINT=claude-desktop`) with a throwaway
+exec-form hook in this project's `.claude/settings.local.json`, since removed. The raw captures
+are kept git-ignored in `.claude/spike/` until the test fixtures are made from them.
+
+| Check | Result |
+|---|---|
+| 1. Display | **Pass.** A UserPromptSubmit `systemMessage` renders as a collapsible *Claude Code notice*, each line prefixed `UserPromptSubmit says:`; two lines render as two prefixed lines; long lines wrap. Plan mode: open the mode menu, then press 4 (1 Auto, 2 Manual, 3 Accept edits, 4 Plan). |
+| 2. Model | **Not available on the first prompt.** SessionStart input has no `model`, on `startup` or `resume`. A model picked before the first message fires no hook. A mid-session dropdown change fires `PostModelSwitch` (`source: sdk`, `from_model`, `to_model`) about 1 s before the next prompt. Resume fired no `PostModelSwitch`. At the first prompt's hook the transcript file did not exist yet. After a switch, the transcript still showed the old model when the next prompt's hook ran. Each transcript reply row carries `message.model`. |
+| 3. Effort | **Not available to the prompt hook.** `$CLAUDE_EFFORT` is unset and the input has no `effort`. Each transcript reply row carries `effort` and `perTurnEffort`. |
+| 4. Payloads | UserPromptSubmit input: `session_id`, `prompt_id`, `prompt`, `permission_mode`, `transcript_path`, `cwd`, `scratchpad_dir`, `session_title`, `hook_event_name`. The hook's `prompt_id` equals the transcript's `promptId`. SessionStart runs to completion before the first prompt is processed: a 3 s delay held it back. Machine turns fire UserPromptSubmit with prompts starting `<task-notification>`, `<agent-message from=` and `<cross-session-message from=`; no `agent_id` was ever present, and one task notification fired no hook. The transcript records origin per turn (`origin.kind`: human, task-notification, peer). SessionStart also carries `prompt_cache_likely_expired`, `seconds_since_last_response`, `context_tokens` and `estimated_cache_write_usd`. PostModelSwitch also carries `prompt_cache_warm`, `cache_ttl`, `pricing` and `requested_model`. |
+| 5. Exec form, path with a space | **Pass.** The hook ran with `command` set to an absolute path inside "Code Playground". |
