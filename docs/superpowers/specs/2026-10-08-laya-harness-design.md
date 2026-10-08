@@ -262,14 +262,16 @@ the hook input:
 | subagent | `agent_id` or `agent_type` is present, or `transcript_path` contains `/subagents/` (not seen in the desktop app; kept as a guard) |
 | human | everything else |
 
-Non-human prompts are logged with their source. They never show a line and never change
+Non-human prompts are logged with their source and are **not sent to the service** (status
+`skipped`), which saves the inference for turns that never show a line. They never show a line
+and never change
 `prompt_count`. `/loop` and scheduled-task turns look human, which stage 0 accepts. The
 transcript records each turn's origin exactly (`origin.kind`), and the stage-2 history reader
 uses that instead of these prefixes.
 
 ### 4.8 Questions
 
-`questions/profile_v0.json` has an `id` and per-question display thresholds. The service
+`laya_harness/questions/profile_v0.json` (shipped inside the package) has an `id` and per-question display thresholds. The service
 records its sha256.
 
 | Field | Type | Question | Shown when |
@@ -293,7 +295,7 @@ it was compared with, the mismatch type, and the channel it will use from stage 
   most about one session in five.
 - **Suggestion:** within the chosen tier, the more likely class (quick or routine, or
   multi-file or architecture) is looked up in the fit table, and the cheapest allowed option is
-  suggested (§4.13). With the default table: quick → Haiku 5.5, routine → Sonnet 5.5 at medium,
+  suggested (§4.13). With the default table: quick → Haiku 5.5 at low, routine → Sonnet 5.5 at medium,
   multi-file → Opus 5.5 at high, architecture → Opus 5.5 at xhigh.
 - Shown **only on the first human prompt of a session** (`prompt_count` was 0), at most once.
   A dropdown change made during the first turn applies from turn 2, while the context is still
@@ -323,7 +325,8 @@ act on in the same turn. Channel: user now, harness from stage 4.
 
 **Numbers shown:** the tier line shows the tier's summed probability; the plan line shows
 `noul`. **Gating uses the values exactly as laya-mlx returns them** (each probability rounded to
-four decimals); the tier sum adds two such values. **Display formats the gated value to two
+four decimals); the tier sum adds two such values and is rounded to four decimals, so float noise
+cannot move a value across a threshold. **Display formats the gated value to two
 decimals** (`f"{v:.2f}"`), so 0.7802 shows as `p=0.78`. Laya's `confidence` field is never used
 for display or gating, because for `choice` it is normalised entropy, not a probability. These are raw scores after upstream's
 temperature scaling and are **not calibrated for this task** until stage 2 measures them.
@@ -336,7 +339,7 @@ failures included,** unless the mode is `off`.
 | Group | Fields |
 |---|---|
 | Keys | `schema_version`, `ts`, `session_id`, `prompt_id`, `transcript_path`, `cwd`, `source` |
-| Outcome | `status`: decided, started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, or `suppress_reason`: below_threshold, not_first_prompt, not_human, plan_mode, already_shown, too_short, no_fit or log_only; `suggestion` (model id, effort, class) |
+| Outcome | `status`: decided, skipped (non-human prompt, not sent), started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, or `suppress_reason`: below_threshold, not_first_prompt, not_human, plan_mode, already_shown, too_short, no_fit or log_only; `suggestion` (model id, effort, class) |
 | Input | `prompt`, `truncated` (from Laya's `usage`) |
 | Laya output | the raw `answers` and `usage` |
 | Versions | `checkpoint` (repo, SHA), `question_set` (id, sha256), `laya_mlx`, `laya_harness`, `adapter_rules`, `catalog` (sha256 of the catalog and the fit table) |
@@ -382,7 +385,8 @@ now prevents.
 | State | Exact text |
 |---|---|
 | (a) first human prompt, light tier ≥ 0.8, model with effort levels | `laya · light task (p=0.86) → Sonnet 5.5 at medium effort fits this task` |
-| (a) first human prompt, light tier ≥ 0.8, option without an effort | `laya · light task (p=0.86) → Haiku 5.5 fits this task` |
+| (a) first human prompt, light tier ≥ 0.8, default quick option | `laya · light task (p=0.86) → Haiku 5.5 at low effort fits this task` |
+| (a) first human prompt, light tier ≥ 0.8, option without an effort (for example Haiku 4.5, if the fit table names it) | `laya · light task (p=0.86) → Haiku 4.5 fits this task` |
 | (a) first human prompt, heavy tier ≥ 0.8 | `laya · heavy task (p=0.91) → Opus 5.5 at xhigh effort fits this task` |
 | (d) plan first | `laya · reads like a multi-step change (p=0.88) → Plan mode (mode menu, then 4), or tell Claude to plan first` |
 | (e) both on the first human prompt | (a) on the first line, (d) on the second |
@@ -415,7 +419,7 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
     |---|---|---|---|---|---|
     | Opus 5.5 | `claude-opus-5-5` | main menu | yes | $4 / $20 | low–max (default medium) |
     | Sonnet 5.5 | `claude-sonnet-5-5` | main menu | yes | $2 / $10 | low–max (default high) |
-    | Haiku 5.5 | `claude-haiku-5-5` | main menu | yes | $0.10 / $0.50 for prompts up to 100k tokens; $0.50 / $2.50 above | supported, default medium; exact levels confirmed during implementation |
+    | Haiku 5.5 | `claude-haiku-5-5` | main menu | yes | $0.10 / $0.50 for prompts up to 100k tokens; $0.50 / $2.50 above | low–max (default medium) |
     | Opus 5 | `claude-opus-5` | More models | opt-in | $5 / $25 | low–max |
     | Opus 4.8 | `claude-opus-4-8` | More models | opt-in | $5 / $25 | low–max |
     | Opus 4.7 | `claude-opus-4-7` | More models | opt-in | $5 / $25 | low–max |
@@ -434,7 +438,7 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
 
   | Class | Acceptable options |
   |---|---|
-  | quick | Haiku (effort left unset); Sonnet at low |
+  | quick | Haiku at low; Sonnet at low |
   | routine | Sonnet at medium |
   | multi-file | Opus at high |
   | architecture | Opus at xhigh |
