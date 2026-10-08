@@ -30,6 +30,19 @@ controller-only gate passed (`.venv/bin/python -m pytest -q -m real_model` → `
 to ready plus a warm call in 3.6 s), and each task's tests were run against the stubs in plan order
 with later tasks absent: every test failed, none passed against a stub (the RED counts below).
 
+## Scope change (2026-10-08, spec D14)
+
+The user adopted a new target architecture: a Bridge behind Obsidian and web front doors, with
+**Laya as the tier router** and **Obsidian as the memory**. This plan therefore ends early:
+
+- **Execute:** Tasks 1–5, then **Task 8 Step 1** (the real-model smoke test of the service), then
+  the controller gates `.venv/bin/python -m pytest -q` (expected `109 passed, 1 deselected`) and
+  `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
+- **Parked, do not dispatch:** Task 6 (hook client), Task 7 (commands), and Task 8 Steps 2–9
+  (console script, setup, acceptance, install). Their verified code stays in this plan for the
+  Bridge design to reuse or replace.
+- **Then stop** before the final commit: the user reviews the implementation with Codex first.
+
 ## Global Constraints
 
 - Interpreter: `.venv/bin/python` (Python 3.11.17); dependency `laya-mlx==0.3.0`; never call a bare `python` or `pytest`.

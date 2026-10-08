@@ -651,6 +651,7 @@ acceptance):
 | D11 | 2026-10-08 | Model-line threshold raised from 0.6 to 0.8 under the spec's one-session-in-five rule (check 6). |
 | D12 | 2026-10-08 | Best fit means the cheapest allowed model and effort that the fit table accepts for the task's class. |
 | D13 | 2026-10-08 | The catalog lists every model version in the picker. The newest per family is allowed by default, older versions are opt-in, and Fable is never allowed. |
+| D14 | 2026-10-08 | Target architecture adopted: front doors (an Obsidian plugin and a web HUD, with voice) → a Bridge → **Laya as the tier router** (in place of TypeSafe's Jev, whose wire protocol laya-serve already speaks) → Tier 1 rules and vault data, Tier 2 a small fast model, Tier 3 a Claude Code or Codex session or skill → **Obsidian as the memory**, with a receipt per request. Stage 0 finishes its reusable core (Tasks 1–5: state, data, session state, adapter and catalog, the Laya service); the in-session hooks (Tasks 6–7) and stage-0 acceptance are parked until the Bridge design decides how the service is started. The Bridge gets its own spec and mockups. |
 
 ## Appendix B — Design review (2026-10-07 to 2026-10-08)
 
