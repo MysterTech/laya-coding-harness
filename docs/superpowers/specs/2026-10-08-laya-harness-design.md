@@ -293,7 +293,7 @@ it was compared with, the mismatch type, and the channel it will use from stage 
   most about one session in five.
 - **Suggestion:** within the chosen tier, the more likely class (quick or routine, or
   multi-file or architecture) is looked up in the fit table, and the cheapest allowed option is
-  suggested (§4.13). With the default table: quick → Haiku 4.5, routine → Sonnet 5.5 at medium,
+  suggested (§4.13). With the default table: quick → Haiku 5.5, routine → Sonnet 5.5 at medium,
   multi-file → Opus 5.5 at high, architecture → Opus 5.5 at xhigh.
 - Shown **only on the first human prompt of a session** (`prompt_count` was 0), at most once.
   A dropdown change made during the first turn applies from turn 2, while the context is still
@@ -382,7 +382,7 @@ now prevents.
 | State | Exact text |
 |---|---|
 | (a) first human prompt, light tier ≥ 0.8, model with effort levels | `laya · light task (p=0.86) → Sonnet 5.5 at medium effort fits this task` |
-| (a) first human prompt, light tier ≥ 0.8, model without effort levels | `laya · light task (p=0.86) → Haiku 4.5 fits this task` |
+| (a) first human prompt, light tier ≥ 0.8, option without an effort | `laya · light task (p=0.86) → Haiku 5.5 fits this task` |
 | (a) first human prompt, heavy tier ≥ 0.8 | `laya · heavy task (p=0.91) → Opus 5.5 at xhigh effort fits this task` |
 | (d) plan first | `laya · reads like a multi-step change (p=0.88) → Plan mode (mode menu, then 4), or tell Claude to plan first` |
 | (e) both on the first human prompt | (a) on the first line, (d) on the second |
@@ -405,23 +405,45 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
   - The newest version in each family is allowed by default. Older versions are listed with
     `allowed: false` and opted in by editing the file, for example to keep a version whose
     behaviour the user prefers.
-  - Starting prices, from the Claude API reference cached on 2026-09-25: Opus 5.5 $4/$20;
-    Opus 5, 4.8, 4.7 and 4.6 $5/$25; Sonnet 5.5 and 5 $2/$10; Sonnet 4.6 $3/$15;
-    Haiku 4.5 $1/$5.
+  - **Starting catalog.** The picker contents come from the user's screenshot
+    (`docs/reference/model-picker-2026-10-08.png`). IDs and prices come from the models
+    overview and the Haiku 5.5 page on platform.claude.com (read 2026-10-08), and the older
+    versions' effort levels from the Claude API reference (cached 2026-09-25). The IDs of the
+    older versions also appear in the user's transcripts.
+
+    | Model | ID | Picker | Allowed by default | Price in / out per MTok | Effort levels |
+    |---|---|---|---|---|---|
+    | Opus 5.5 | `claude-opus-5-5` | main menu | yes | $4 / $20 | low–max (default medium) |
+    | Sonnet 5.5 | `claude-sonnet-5-5` | main menu | yes | $2 / $10 | low–max (default high) |
+    | Haiku 5.5 | `claude-haiku-5-5` | main menu | yes | $0.10 / $0.50 for prompts up to 100k tokens; $0.50 / $2.50 above | supported, default medium; exact levels confirmed during implementation |
+    | Opus 5 | `claude-opus-5` | More models | opt-in | $5 / $25 | low–max |
+    | Opus 4.8 | `claude-opus-4-8` | More models | opt-in | $5 / $25 | low–max |
+    | Opus 4.7 | `claude-opus-4-7` | More models | opt-in | $5 / $25 | low–max |
+    | Opus 4.6 | `claude-opus-4-6` | More models | opt-in | $5 / $25 | low, medium, high, max |
+    | Sonnet 5 | `claude-sonnet-5` | More models | opt-in | $2 / $10 | low–max |
+    | Sonnet 4.6 | `claude-sonnet-4-6` | More models | opt-in | $3 / $15 | low, medium, high, max |
+    | Haiku 4.5 | `claude-haiku-4-5` | More models | opt-in | $1 / $5 | none |
+    | Fable 5.1, Fable 5 | — | listed ("requires usage credits") | **never** | — | — |
+
+  - Haiku 5.5 was released on 2026-10-07. Anthropic positions it for high-volume work such as
+    classification, routing, extraction and subagent tasks, not specifically for coding. It is
+    in the default fit table only for quick tasks, and stage 2 checks how it does there.
 - **Fit table:** `laya_harness/data/claude_code_fit.json`, committed and edited by the user. For
   each difficulty class it lists the acceptable options. An option names either a family (its
   newest allowed version) or a specific model id, plus an effort. Defaults:
 
   | Class | Acceptable options |
   |---|---|
-  | quick | Haiku; Sonnet at low |
+  | quick | Haiku (effort left unset); Sonnet at low |
   | routine | Sonnet at medium |
   | multi-file | Opus at high |
   | architecture | Opus at xhigh |
 
 - **Rule (cheapest that fits).** Take the class §4.9 chose, keep the options whose model is
-  allowed and in the picker, and suggest the one with the lowest input price; ties go to the
-  newest version. Every current model prices output at 5× input, so ordering by output gives
+  allowed and in the picker, and suggest the one with the lowest input price (the base tier
+  where pricing is tiered); ties go to the newest version. An option may leave the effort unset,
+  and the line then names only the model. Every current model prices output at 5× input, so
+  ordering by output gives
   the same result. A model with no effort levels is suggested without one. If no option
   qualifies, nothing is shown (`suppress_reason: no_fit`).
   - Older versions currently cost the same as, or more than, the newest in their family. So an
