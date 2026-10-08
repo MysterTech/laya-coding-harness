@@ -305,11 +305,12 @@ it was compared with, the mismatch type, and the channel it will use from stage 
 **MODEL + REASONING (from `difficulty`)**
 
 - **Tier:** light = P(quick) + P(routine); heavy = P(multi-file) + P(architecture). The tier
-  with the larger sum is chosen. The line is eligible only if that sum is ≥ 0.8 (D11). Check 6: on the first prompts of
+  with the larger sum is chosen, and a tie goes to light. The line is eligible only if that sum is
+  ≥ 0.8 (D11). Check 6: on the first prompts of
   100 past sessions it would fire 81% of the time at 0.6 and 13% at 0.8, and the rule is at
   most about one session in five.
 - **Suggestion:** within the chosen tier, the more likely class (quick or routine, or
-  multi-file or architecture) is looked up in the fit table, and the cheapest allowed option is
+  multi-file or architecture; a tie goes to the lighter class) is looked up in the fit table, and the cheapest allowed option is
   suggested (§4.13). With the default table: quick → Haiku 5.5 at low, routine → Sonnet 5.5 at medium,
   multi-file → Opus 5.5 at high, architecture → Opus 5.5 at xhigh.
 - Shown **only on the first human prompt of a session** (`prompt_count` was 0), at most once.
@@ -327,7 +328,8 @@ it was compared with, the mismatch type, and the channel it will use from stage 
 **MODE (from `plan_first`)** — shown only when all of these hold:
 
 - noul ≥ 0.85;
-- `permission_mode` is not `plan`, and the prompt does not start with `/plan`;
+- `permission_mode` is not `plan`, and the prompt, ignoring leading whitespace, does not start
+  with `/plan` (a longer command such as `/planning` also matches, which errs toward silence);
 - it is the first human prompt, or the prompt is at least 200 characters long;
 - `plan_shown` is false for this session.
 
@@ -354,7 +356,7 @@ failures included,** unless the mode is `off`.
 | Group | Fields |
 |---|---|
 | Keys | `schema_version`, `ts`, `session_id`, `prompt_id`, `transcript_path`, `cwd`, `source` |
-| Outcome | `status`: decided, skipped (non-human prompt, not sent), started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, and `suppress_reason` recorded per line as `{model, plan}`, each one of: below_threshold, not_first_prompt, not_human, plan_mode, already_shown, too_short, no_fit or log_only; `suggestion` (model id, effort, class) |
+| Outcome | `status`: decided, skipped (non-human prompt, not sent), started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, and `suppress_reason` recorded per line as `{model, plan}`, each one of: below_threshold, not_first_prompt, not_human, plan_mode, already_shown, too_short, no_fit or log_only. When several apply, the first in this order is recorded: model line not_first_prompt, below_threshold, no_fit; plan line below_threshold, plan_mode, too_short, already_shown; `suggestion` (model id, effort, class) |
 | Input | `prompt`, `truncated` (from Laya's `usage`) |
 | Laya output | the raw `answers` and `usage` |
 | Versions | `checkpoint` (repo, SHA), `question_set` (id, sha256), `laya_mlx`, `laya_harness`, `adapter_rules`, `catalog` (sha256 of the catalog and the fit table) |
@@ -422,7 +424,9 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
   for a model that takes none), `in_picker`, `menu` (`main` or `more`) and `allowed`, under a
   top-level `source` note that names where the values came from. The user or controller confirms `in_picker` when the catalog
   is refreshed.
-  - **Fable is never allowed.**
+  - **Fable is never allowed.** The rule refuses any model whose family, id or display name
+    contains "fable" or "mythos" (Mythos is Fable's sibling line), whatever the `allowed` flag
+    says and in any letter case.
   - The newest version in each family is allowed by default. Older versions are listed with
     `allowed: false` and opted in by editing the file, for example to keep a version whose
     behaviour the user prefers.
@@ -464,11 +468,16 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
 
 - **Rule (cheapest that fits).** Take the class §4.9 chose, keep the options whose model is
   allowed and in the picker, and suggest the one with the lowest input price (the base tier
-  where pricing is tiered); ties go to the newest version. An option may leave the effort unset,
-  and the line then names only the model. Every current model prices output at 5× input, so
-  ordering by output gives
-  the same result. A model with no effort levels is suggested without one. If no option
-  qualifies, nothing is shown (`suppress_reason: no_fit`).
+  where pricing is tiered); ties go to the newest version, compared number by number (5.5 is
+  newer than 5, and 4.10 newer than 4.8). Every current model prices output at 5× input, so
+  ordering by output gives the same result.
+  - An option qualifies only if its model supports the option's effort. An option may leave the
+    effort unset, and the line then names only the model; that is the only way a model with no
+    effort levels (Haiku 4.5) is suggested. An option asking for an effort the model lacks
+    (xhigh on Opus 4.6) does not qualify, and the next option is tried.
+  - An option whose model cannot be resolved (not in the catalog, not allowed, not in the
+    picker) is skipped, and the next option is tried. If no option qualifies, nothing is shown
+    (`suppress_reason: no_fit`).
   - Older versions currently cost the same as, or more than, the newest in their family. So an
     opted-in older version is suggested only when the fit table names it by id and no cheaper
     option fits.
