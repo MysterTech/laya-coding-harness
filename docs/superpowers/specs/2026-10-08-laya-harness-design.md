@@ -241,8 +241,8 @@ both start unknown. They are filled in for logging as they become visible:
   `switched_at`, and clears `first_prompt_after_switch_at`. The next human prompt sets
   `first_prompt_after_switch_at` to its own submission time.
 - From the second human prompt on, the client reads the transcript's last assistant row and
-  takes its `effort` as the row carries it (none if the row has none, so a stale effort is never
-  logged against a model that takes no effort), and takes `message.model` (`model_source: transcript`) **only if no switch is
+  takes its `effort` as the row carries it (none if the row has none, or carries something other
+  than a string, so a stale effort is never logged against a model that takes no effort), and takes `message.model` (`model_source: transcript`) **only if no switch is
   pending**. A switch is pending until the transcript holds an assistant row timestamped after
   `first_prompt_after_switch_at` (strictly after; a row without a timestamp never ends a
   pending switch). Assistant rows carry no `promptId`, so timestamps are the
