@@ -291,9 +291,10 @@ it was compared with, the mismatch type, and the channel it will use from stage 
   with the larger sum is chosen. The line is eligible only if that sum is ≥ 0.8 (D11). Check 6: on the first prompts of
   100 past sessions it would fire 81% of the time at 0.6 and 13% at 0.8, and the rule is at
   most about one session in five.
-- **Suggestion:** light → Sonnet 5.5; heavy → Opus 5.5. The effort comes from the more likely
-  class within the tier: quick → low, routine → medium, multi-file → high,
-  architecture → xhigh.
+- **Suggestion:** within the chosen tier, the more likely class (quick or routine, or
+  multi-file or architecture) is looked up in the fit table, and the cheapest allowed option is
+  suggested (§4.13). With the default table: quick → Haiku 4.5, routine → Sonnet 5.5 at medium,
+  multi-file → Opus 5.5 at high, architecture → Opus 5.5 at xhigh.
 - Shown **only on the first human prompt of a session** (`prompt_count` was 0), at most once.
   A dropdown change made during the first turn applies from turn 2, while the context is still
   small. Switching later throws away more of the model-scoped prompt cache.
@@ -335,10 +336,10 @@ failures included,** unless the mode is `off`.
 | Group | Fields |
 |---|---|
 | Keys | `schema_version`, `ts`, `session_id`, `prompt_id`, `transcript_path`, `cwd`, `source` |
-| Outcome | `status`: decided, started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, or `suppress_reason`: below_threshold, not_first_prompt, not_human, plan_mode, already_shown, too_short or log_only |
+| Outcome | `status`: decided, started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, or `suppress_reason`: below_threshold, not_first_prompt, not_human, plan_mode, already_shown, too_short, no_fit or log_only; `suggestion` (model id, effort, class) |
 | Input | `prompt`, `truncated` (from Laya's `usage`) |
 | Laya output | the raw `answers` and `usage` |
-| Versions | `checkpoint` (repo, SHA), `question_set` (id, sha256), `laya_mlx`, `laya_harness`, `adapter_rules` |
+| Versions | `checkpoint` (repo, SHA), `question_set` (id, sha256), `laya_mlx`, `laya_harness`, `adapter_rules`, `catalog` (sha256 of the catalog and the fit table) |
 | Session state | `model`, `effort` and `model_source` as known at that prompt (§4.6), `permission_mode` |
 | Timing | `latency_ms`, `cold` |
 
@@ -352,7 +353,7 @@ All commands use the standard library only, apart from the download in `setup`.
 | Command | Does |
 |---|---|
 | `laya-harness setup` | §4.5 |
-| `laya-harness status` | one line: down / loading / ready / not_ready (with reason), mode, checkpoint SHA, log paths |
+| `laya-harness status` | one line: down / loading / ready / not_ready (with reason), mode, checkpoint SHA, log paths, and any model seen in the log that the catalog does not list |
 | `laya-harness stop` | stops the PID reported by `/v1/health`. It warns when mode is not `off`, since the next prompt restarts the service. |
 | `laya-harness mode show\|log-only\|off` | `show` is normal. `log-only` logs everything and shows nothing. `off` makes the client exit at once, without starting anything or logging. |
 
@@ -380,14 +381,58 @@ now prevents.
 
 | State | Exact text |
 |---|---|
-| (a) first human prompt, light tier ≥ 0.8 | `laya · light task (p=0.86) → Sonnet 5.5 at low effort fits this task` |
+| (a) first human prompt, light tier ≥ 0.8, model with effort levels | `laya · light task (p=0.86) → Sonnet 5.5 at medium effort fits this task` |
+| (a) first human prompt, light tier ≥ 0.8, model without effort levels | `laya · light task (p=0.86) → Haiku 4.5 fits this task` |
 | (a) first human prompt, heavy tier ≥ 0.8 | `laya · heavy task (p=0.91) → Opus 5.5 at xhigh effort fits this task` |
 | (d) plan first | `laya · reads like a multi-step change (p=0.88) → Plan mode (mode menu, then 4), or tell Claude to plan first` |
 | (e) both on the first human prompt | (a) on the first line, (d) on the second |
 | (g) nothing shown | the service is starting, loading, not ready, slow or erroring; the prompt is not human; a score is below its threshold; not the first human prompt (model line); plan already shown, already in Plan mode, or the prompt is too short; mode is `log-only` or `off` |
 
-The effort word in (a) follows §4.9: low or medium for the light tier, high or xhigh for the
-heavy tier.
+The model name in (a) is the catalog's `display` name, and the effort is the fit-table option's
+effort (§4.13). A model with no effort levels is named without one.
+
+### 4.13 Model catalog and fit table (Claude Code adapter)
+
+Laya judges only how much the task needs (§4.9's tier and class); it never sees a model name.
+Which model and effort to suggest is deterministic adapter data (D12, D13).
+
+- **Catalog:** `laya_harness/data/claude_code_models.json`, committed. It has one entry per model
+  and version in the desktop app's model picker: `id`, `display` name, `family`, `version`,
+  `price` (input, output and cache-read per MTok), `effort_levels` (empty for a model that takes
+  none), `in_picker` and `allowed`. The user or controller confirms `in_picker` when the catalog
+  is refreshed.
+  - **Fable is never allowed.**
+  - The newest version in each family is allowed by default. Older versions are listed with
+    `allowed: false` and opted in by editing the file, for example to keep a version whose
+    behaviour the user prefers.
+  - Starting prices, from the Claude API reference cached on 2026-09-25: Opus 5.5 $4/$20;
+    Opus 5, 4.8, 4.7 and 4.6 $5/$25; Sonnet 5.5 and 5 $2/$10; Sonnet 4.6 $3/$15;
+    Haiku 4.5 $1/$5.
+- **Fit table:** `laya_harness/data/claude_code_fit.json`, committed and edited by the user. For
+  each difficulty class it lists the acceptable options. An option names either a family (its
+  newest allowed version) or a specific model id, plus an effort. Defaults:
+
+  | Class | Acceptable options |
+  |---|---|
+  | quick | Haiku; Sonnet at low |
+  | routine | Sonnet at medium |
+  | multi-file | Opus at high |
+  | architecture | Opus at xhigh |
+
+- **Rule (cheapest that fits).** Take the class §4.9 chose, keep the options whose model is
+  allowed and in the picker, and suggest the one with the lowest input price; ties go to the
+  newest version. Every current model prices output at 5× input, so ordering by output gives
+  the same result. A model with no effort levels is suggested without one. If no option
+  qualifies, nothing is shown (`suppress_reason: no_fit`).
+  - Older versions currently cost the same as, or more than, the newest in their family. So an
+    opted-in older version is suggested only when the fit table names it by id and no cheaper
+    option fits.
+- **Refresh.** Hooks cannot read the app's picker, so the catalog is edited by hand when models
+  change, as a reviewed diff. `laya-harness status` lists any model seen in the decision log
+  (from `PostModelSwitch` or the transcript) that the catalog does not know.
+- **Learning (stages 2–3).** The user's history spans many versions. Stage 2 measures, per model
+  and version, which classes ran without interruptions or corrections and at what token cost,
+  and proposes fit-table changes as reviewed diffs.
 
 ## 5. Failure handling — laya stays out of the way
 
@@ -417,6 +462,10 @@ heavy tier.
     reply is still model A, keeps B; a later reply on B, timestamped after the first prompt
     submitted after the switch, is accepted; a reply on A from the turn that was in flight
     during the switch is ignored;
+  - the catalog and fit table: the cheapest allowed option wins, ties go to the newest; Fable is
+    never suggested, even if listed; a disallowed or not-in-picker model is skipped; an older
+    version is chosen only when the fit table names it and nothing cheaper fits; a model with no
+    effort levels is named without one; no qualifying option gives `no_fit`;
   - canonical model names; prompt-source detection on the payloads captured in check 4;
     session-state updates from `PostModelSwitch` and from the transcript, including a missing
     transcript; the question-file format; assembling a profile; SessionStart and
@@ -534,6 +583,7 @@ acceptance):
 | Stage 2 | Question wording: an effort-scale `difficulty` without topic words, compared on history. |
 | Stage 2 | Checkpoint comparison (English, typed-decisions, multilingual) on a labelled set; tune thresholds on history; apply the prompt-source filter in the history reader. |
 | Stage 2 | How often the uncompared model line (D10) was redundant, and how often it was followed, from the logged session state. |
+| Stage 2 | A fit table from evidence: per model and version, which classes ran without interruptions or corrections and at what token cost, proposed as reviewed diffs to the fit table (§4.13). |
 | Stage 3 | Refit per-field thresholds and calibration from outcomes and labels. |
 | Stage 4 | MODEL and REASONING as separate suggestions compared with the current setting (known from the second prompt on): effort on later prompts, model after clear, compact or resume; harness notes for MODE and PARALLELISM; prompt-stopping never fires on non-human turns; calibrated wording for scores. |
 | Stage 5 | CONTEXT advice using SessionStart's `prompt_cache_likely_expired`, `seconds_since_last_response` and `context_tokens`, and PostModelSwitch's `prompt_cache_warm` and `estimated_cache_write_usd` (all observed in check 4). |
@@ -554,6 +604,8 @@ acceptance):
 | D9 | 2026-10-08 | Start with the general English checkpoint, pinned by SHA. |
 | D10 | 2026-10-08 | The model/effort line is suggested on the first human prompt without comparison, because hooks cannot see the model or effort then (Appendix C). |
 | D11 | 2026-10-08 | Model-line threshold raised from 0.6 to 0.8 under the spec's one-session-in-five rule (check 6). |
+| D12 | 2026-10-08 | Best fit means the cheapest allowed model and effort that the fit table accepts for the task's class. |
+| D13 | 2026-10-08 | The catalog lists every model version in the picker. The newest per family is allowed by default, older versions are opt-in, and Fable is never allowed. |
 
 ## Appendix B — Design review (2026-10-07 to 2026-10-08)
 
