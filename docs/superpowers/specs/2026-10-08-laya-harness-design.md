@@ -14,6 +14,10 @@ typed-decision model (laya-mlx, MLX on Apple silicon), to read each prompt you s
 Code or Codex. It classifies the prompt into a harness-neutral *execution profile*, then
 recommends how to configure the harness for that task.
 
+laya-harness is the umbrella for the whole system, the web HUD included (D15). The boundaries
+below bind the **Laya component**. The Bridge and the HUD, when they arrive, may start sessions
+and run skills; Laya still only classifies.
+
 Boundaries that every stage keeps:
 
 - **Laya sits above the harness, never inside its agent loop.** It never launches agents, runs
@@ -88,6 +92,7 @@ Each stage updates this document before any of its code is written.
 | **0. First working version (Claude Code)** | Section 4. Prompt → hook → service → three questions → one-line suggestion → logged. Advises only, never stops a prompt. |
 | 1. Codex | The same client in a Codex `UserPromptSubmit` command hook; the Codex adapter reads `~/.codex/config.toml`. Proves the shared semantic layer. |
 | 2. Measure | Readers for Claude Code transcripts and Codex sessions; out-of-the-box accuracy per field on held-out sessions; checkpoint comparison; display thresholds tuned. |
+| HUD. Web front door (D15) | The Bridge and a web HUD, with their own spec and mockups first. Day one sits between a read-only view and the full dashboard: routing decisions and receipts plus a chosen set of actions and reports, fixed when the stage starts. No voice in its first phase. Obsidian plugin later. |
 | 3. Learn | Training cases from outcomes, the user's labels and logged overrides; split by session; a GPU fine-tune with upstream `laya-train` (off this Mac, with explicit approval); `laya-mlx convert`; swap and re-measure. |
 | 4. Act | Prompt-stopping and harness notes switched on per field that clears its threshold. MODEL and REASONING become separate suggestions. |
 | 5. Widen | More profile fields (CONTEXT, CAPABILITY, SKILL, PERMISSION, ENVIRONMENT); other question sets ("done without proof" Stop check, turn-end notifier, bulk classifier, context picker); cross-harness advice, off by default. |
@@ -660,7 +665,8 @@ acceptance):
 | D11 | 2026-10-08 | Model-line threshold raised from 0.6 to 0.8 under the spec's one-session-in-five rule (check 6). |
 | D12 | 2026-10-08 | Best fit means the cheapest allowed model and effort that the fit table accepts for the task's class. |
 | D13 | 2026-10-08 | The catalog lists every model version in the picker. The newest per family is allowed by default, older versions are opt-in, and Fable is never allowed. |
-| D14 | 2026-10-08 | Target architecture adopted: front doors (an Obsidian plugin and a web HUD, with voice) → a Bridge → **Laya as the tier router** (in place of TypeSafe's Jev, whose wire protocol laya-serve already speaks) → Tier 1 rules and vault data, Tier 2 a small fast model, Tier 3 a Claude Code or Codex session or skill → **Obsidian as the memory**, with a receipt per request. Stage 0 finishes its reusable core (Tasks 1–5: state, data, session state, adapter and catalog, the Laya service); the in-session hooks (Tasks 6–7) and stage-0 acceptance are parked until the Bridge design decides how the service is started. The Bridge gets its own spec and mockups. |
+| D14 | 2026-10-08 | Target architecture adopted: front doors (an Obsidian plugin and a web HUD, with voice) → a Bridge → **Laya as the tier router** (in place of TypeSafe's Jev, whose wire protocol laya-serve already speaks) → Tier 1 rules and vault data, Tier 2 a small fast model, Tier 3 a Claude Code or Codex session or skill → **Obsidian as the memory**, with a receipt per request. Stage 0 finishes its reusable core (Tasks 1–5: state, data, session state, adapter and catalog, the Laya service); the in-session hooks (Tasks 6–7) and stage-0 acceptance are parked until the Bridge design decides how the service is started. The Bridge gets its own spec and mockups. *Parking lifted by D15.* |
+| D15 | 2026-10-08 | laya-harness is the umbrella and the UI is in its scope; §1's boundaries bind the Laya component. The first front door is a web HUD, without voice in its first phase; the Obsidian plugin comes later. The HUD stage follows stage 2 (Measure), so it shows measured confidence rather than raw guesses. The harness is built first: Tasks 6–7 and stage-0 acceptance are unparked as written, the hook starting the service itself; the Bridge later reuses or replaces that start-up path. |
 
 ## Appendix B — Design review (2026-10-07 to 2026-10-08)
 
