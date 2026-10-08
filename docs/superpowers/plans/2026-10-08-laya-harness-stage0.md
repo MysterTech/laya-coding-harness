@@ -25,7 +25,7 @@ before any task). **Mockup:** spec §4.12 plus `docs/mockups/stage0-check1-*.png
 
 **How this plan was verified (plan preflight):** every code block below was executed in a
 throwaway copy of the repo at commit `1606ae9` (every later commit changes only `docs/` and `README.md`) before being written here, and is copied from those
-files, not retyped. In that copy the full suite passed repeatedly (`180 passed, 1 deselected` with every task, after the review rounds of Tasks 1–4), the
+files, not retyped. In that copy the full suite passed repeatedly (`185 passed, 1 deselected` with every task, after the review rounds of Tasks 1–4), the
 controller-only gate passed (`.venv/bin/python -m pytest -q -m real_model` → `1 passed`, cold start
 to ready plus a warm call in 3.6 s), and each task's tests were run against the stubs in plan order
 with later tasks absent: every test failed, none passed against a stub (the RED counts below).
@@ -36,7 +36,7 @@ The user adopted a new target architecture: a Bridge behind Obsidian and web fro
 **Laya as the tier router** and **Obsidian as the memory**. This plan therefore ends early:
 
 - **Execute:** Tasks 1–5, then **Task 8 Step 1** (the real-model smoke test of the service), then
-  the controller gates `.venv/bin/python -m pytest -q` (expected `147 passed, 1 deselected`) and
+  the controller gates `.venv/bin/python -m pytest -q` (expected `152 passed, 1 deselected`) and
   `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
 - **Parked, do not dispatch:** Task 6 (hook client), Task 7 (commands), and Task 8 Steps 2–9
   (console script, setup, acceptance, install). Their verified code stays in this plan for the
@@ -1773,7 +1773,7 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
   `decide(answers, *, first_human, plan_shown, permission_mode, prompt, display, catalog, fit, session)
   -> {"lines", "line_for", "suppress_reason", "suggestion", "mismatches"}`.
 
-> Revised after review round 1: equal-price versions go to the newest, compared number by number (5.5 over 5, 4.10 over 4.8); an option qualifies only if its model supports its effort, and an unresolvable option falls through to the next; Fable and Mythos are refused by family, id or display name in any case; and 33 more tests pin the gate edges, the literal copy-deck rows, the suppress-reason precedence, the `/plan` cases and all three `mismatches` entries (spec §4.9, §4.13 as of 03bab0d). Mockup: the §4.12 copy deck. There is no capturable surface until Task 8, so the visual review is recorded **N/A** here; the unit tests compare the exact strings.
+> Revised after review round 1: equal-price versions go to the newest, compared number by number (5.5 over 5, 4.10 over 4.8); an option qualifies only if its model supports its effort, and an unresolvable option falls through to the next; Fable and Mythos are refused by family, id or display name in any case; and 38 more tests pin the gate edges, the literal copy-deck rows, the suppress-reason precedence, the `/plan` cases and all three `mismatches` entries (spec §4.9, §4.13 as of 03bab0d). Review round 2 added tests only: cheapest beats newest, each option keeps its own effort, each `never()` field on its own, `/planning` and a rounded-up tier value. Mockup: the §4.12 copy deck. There is no capturable surface until Task 8, so the visual review is recorded **N/A** here; the unit tests compare the exact strings.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1881,6 +1881,8 @@ def test_unresolvable_option_falls_through_to_the_next():
     (None, "claude-fable-5", "Fable 5"),
     ("opus", "claude-fable-5", "Fable 5"),
     ("opus", "claude-x", "Claude Mythos 5.1"),
+    ("fable", "claude-x", "X"),
+    ("opus", "claude-fable-9", "X 9"),
 ])
 def test_fable_and_mythos_never_suggested_in_any_form(family, model_id, display):
     model = {"id": model_id, "display": display, "version": "9", "price": {"input": 0.01},
@@ -1935,6 +1937,20 @@ def test_option_with_an_unsupported_effort_does_not_qualify():
     fit = {"classes": {"architecture": [{"model": "claude-opus-4-6", "effort": "xhigh"},
                                         {"family": "opus", "effort": "xhigh"}]}}
     assert catalog.select("architecture", cat, fit)["model"] == "claude-opus-5-5"
+
+
+def test_cheapest_beats_newest():
+    # Haiku 4.5 (older, opted in, $1) beats Sonnet 5.5 ($2) whichever the fit table lists first
+    cat = allow("claude-haiku-4-5")
+    for order in ([{"model": "claude-sonnet-5-5", "effort": "low"}, {"model": "claude-haiku-4-5"}],
+                  [{"model": "claude-haiku-4-5"}, {"model": "claude-sonnet-5-5", "effort": "low"}]):
+        assert catalog.select("quick", cat, {"classes": {"quick": order}}) == {
+            "model": "claude-haiku-4-5", "display": "Haiku 4.5", "effort": None, "class": "quick"}
+
+
+def test_effort_stays_with_its_own_option():
+    fit = {"classes": {"quick": [{"family": "sonnet", "effort": "medium"}, {"family": "haiku", "effort": "low"}]}}
+    assert catalog.select("quick", CATALOG, fit)["effort"] == "low"
 
 
 def test_canonical_names():
@@ -2011,6 +2027,8 @@ def test_display_formats_gated_value_to_two_decimals():
     assert d["lines"] == [] and d["suppress_reason"]["model"] == "below_threshold"
     d = run(answers(quick=0.4501, routine=0.3501, multi=0.1, arch=0.0998))  # 0.8002
     assert d["lines"][0].startswith("laya · light task (p=0.80) →")
+    d = run(answers(quick=0.4501, routine=0.3551, multi=0.1, arch=0.0948))  # 0.8052 rounds up
+    assert d["lines"] == ["laya · light task (p=0.81) → Haiku 5.5 at low effort fits this task"]
 
 
 # --- copy deck (spec §4.12): the literal spec text --------------------------------------
@@ -2070,7 +2088,8 @@ def test_plan_uses_noul_never_confidence(noul, confidence, shown):
 
 
 @pytest.mark.parametrize("mode, prompt", [("plan", "x" * 300), ("auto", "/plan " + "x" * 300),
-                                         ("auto", "   /plan " + "x" * 300), ("auto", "/plan")])
+                                         ("auto", "   /plan " + "x" * 300), ("auto", "/plan"),
+                                         ("auto", "/planning-notes " + "x" * 300)])
 def test_no_plan_line_in_plan_mode(mode, prompt):
     d = run(answers(plan=0.95), permission_mode=mode, prompt=prompt)
     assert d["lines"] == [] and d["suppress_reason"]["plan"] == "plan_mode"
@@ -2099,6 +2118,7 @@ def test_plan_line_once_per_session():
     (dict(a=answers(plan=0.9), first_human=False, prompt="x", plan_shown=True), "not_first_prompt", "too_short"),
 ])
 def test_suppress_reason_precedence(kwargs, model_reason, plan_reason):
+    kwargs = dict(kwargs)
     d = run(kwargs.pop("a"), **kwargs)
     assert d["suppress_reason"] == {"model": model_reason, "plan": plan_reason}
 
@@ -2212,7 +2232,7 @@ def decide(answers: dict, *, first_human: bool, plan_shown: bool, permission_mod
 
 Run: `.venv/bin/python -m pytest -q tests/test_adapter.py`
 
-Expected: `58 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `63 failed`; every failure is `NotImplementedError`. Record the output in the task report.
 
 - [ ] **Step 4: Implement**, replacing the stubs with exactly this code
 
@@ -2384,11 +2404,11 @@ def decide(answers: dict, *, first_human: bool, plan_shown: bool, permission_mod
 
 Run: `.venv/bin/python -m pytest -q tests/test_adapter.py`
 
-Expected: `58 passed`.
+Expected: `63 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `140 passed, 1 deselected`.
+Expected: `145 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -2977,7 +2997,7 @@ Expected: `7 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `147 passed, 1 deselected`.
+Expected: `152 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -3856,7 +3876,7 @@ Expected: `23 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `170 passed, 1 deselected`.
+Expected: `175 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -4235,7 +4255,7 @@ Expected: `10 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `180 passed, 1 deselected`.
+Expected: `185 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -4319,7 +4339,7 @@ def test_real_service_answers_the_stage0_questions(configured, home):
   Add `laya-harness setup | status | stop | mode` to the gate profile with the results you observed.
 
 - [ ] **Step 3 (controller): Final gates.** Run `.venv/bin/python -m pytest -q` (expected
-  `180 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
+  `185 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
   Contract-drift check: `git status --porcelain -- docs/` must be empty. The controller commits every
   doc change on its own before code, so an uncommitted doc edit can only have come from a subagent.
 
