@@ -254,7 +254,9 @@ both start unknown. They are filled in for logging as they become visible:
   `transcript_path` that is not a string, or a missing or unreadable transcript, leaves the
   values as they were. The reader cannot detect a lagging transcript; the pending-switch rule
   above handles that.
-- A session file that cannot be read as a JSON object starts again from the defaults.
+- A session file that cannot be read as a JSON object with the expected field types starts again
+  from the defaults, so one corrupt file cannot turn every later prompt in that session into an
+  error.
 - The `startup` and `fork` sources reset `prompt_count`, `model_line_shown` and `plan_shown`;
   `resume`, `clear` and `compact` leave them alone. On each **human** prompt (§4.7), the
   client increments `prompt_count` before calling the service.
