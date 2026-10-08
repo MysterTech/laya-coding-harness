@@ -97,6 +97,12 @@ The service runs laya-mlx, answers three questions per prompt, and exits after 1
   Anything else on stdout becomes context for Claude. SessionStart always prints nothing.
 - Diagnostics go to `~/.laya-harness/client.log`, one line per problem.
 - It calls the service with a **1.5 s total deadline**. Check 6 confirms or adjusts this.
+- **The hook is synchronous, and that is a deliberate cost.** Claude Code holds the prompt
+  until the hook exits ("blocks model processing until it completes", hooks docs), so the
+  client's whole run time is added before Claude starts: at most about 1.6 s (the 1.5 s
+  deadline plus local work), usually much less. Stage 0 does not promise zero added delay. The
+  hook must not be made async: an async hook's `systemMessage` goes to Claude, which would
+  break the rule that laya adds nothing to Claude's context.
 - The port comes from `~/.laya-harness/config.json`. Hooks in the desktop app do not inherit
   variables exported in the user's shell, so the port is never read from an environment
   variable.
@@ -110,8 +116,11 @@ The service runs laya-mlx, answers three questions per prompt, and exits after 1
   `Popen([venv_python, "-I", "-m", "laya_harness.service"], stdin=DEVNULL, stdout=DEVNULL,
   stderr=<append to ~/.laya-harness/service.log>, start_new_session=True,
   cwd=~/.laya-harness)`. Then the client exits.
-- The client exits promptly after spawning, because a hook timeout kills everything a
-  still-running hook started.
+- The client exits promptly after spawning. The design review found that the hook runner
+  bundled with Claude Code 2.1.288 and 2.1.289 kills everything a still-running hook started
+  when the hook times out; the docs do not say this. Acceptance (§8, step 3a) confirms that a
+  service spawned this way reaches `ready` after the hook exits and survives the session
+  closing.
 
 ### 4.4 Service
 
@@ -178,15 +187,24 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
 
 The client owns session state, one file per session:
 `~/.laya-harness/sessions/<session_id>.json` (mode 0600), holding
-`{model, effort, model_source, prompt_count, model_line_shown, plan_shown, updated}`.
+`{model, effort, model_source, switched_at, first_prompt_after_switch_at, prompt_count,
+model_line_shown, plan_shown, updated}`.
 
 The desktop app gives hooks **no model or effort on a session's first prompt** (Appendix C), so
 both start unknown. They are filled in for logging as they become visible:
 
-- `PostModelSwitch` sets `model` from `to_model` (`model_source: post_model_switch`).
+- `PostModelSwitch` sets `model` from `to_model` (`model_source: post_model_switch`), records
+  `switched_at`, and clears `first_prompt_after_switch_at`. The next human prompt sets
+  `first_prompt_after_switch_at` to its own submission time.
 - From the second human prompt on, the client reads the transcript's last assistant row and
-  takes `message.model` and `effort` (`model_source: transcript`). The transcript can lag, so a
-  missing or unreadable transcript leaves the values as they were.
+  takes `effort`, and takes `message.model` (`model_source: transcript`) **only if no switch is
+  pending**. A switch is pending until the transcript holds an assistant row timestamped after
+  `first_prompt_after_switch_at`. Assistant rows carry no `promptId`, so timestamps are the
+  link. This matters because check 2 saw the transcript still showing the old model after a
+  switch. Without the rule, a stale reply would overwrite the switch and log the old model
+  against a prompt that runs on the new one.
+- The client reads only the transcript's tail (the last 256 KB) to keep the hook fast. A
+  missing, unreadable or lagging transcript leaves the values as they were.
 - The `startup` and `fork` sources reset `prompt_count`. On each **human** prompt (§4.7), the
   client increments `prompt_count` before calling the service.
 
@@ -252,14 +270,18 @@ it was compared with, the mismatch type, and the channel it will use from stage 
 - it is the first human prompt, or the prompt is at least 200 characters long;
 - `plan_shown` is false for this session.
 
-The line arrives while the turn is already running. Stage 4 moves it to a harness note that
-Claude can act on itself. Channel: user now, harness from stage 4.
+The line appears as the turn starts, after the synchronous hook has held the prompt for at
+most about 1.6 s (§4.2). It cannot change the mode of the turn it appears with; switching to
+Plan mode then applies from the next prompt. Stage 4 moves it to a harness note that Claude can
+act on in the same turn. Channel: user now, harness from stage 4.
 
 **PARALLELISM (from `parallel`):** logged, never shown. Channel: harness from stage 4.
 
 **Numbers shown:** the tier line shows the tier's summed probability; the plan line shows
-`noul`. Laya's `confidence` field is never used for display or gating, because for `choice`
-it is normalised entropy, not a probability. These are raw scores after upstream's
+`noul`. **Gating uses the values exactly as laya-mlx returns them** (each probability rounded to
+four decimals); the tier sum adds two such values. **Display formats the gated value to two
+decimals** (`f"{v:.2f}"`), so 0.7802 shows as `p=0.78`. Laya's `confidence` field is never used
+for display or gating, because for `choice` it is normalised entropy, not a probability. These are raw scores after upstream's
 temperature scaling and are **not calibrated for this task** until stage 2 measures them.
 
 ### 4.10 Decision log
@@ -345,8 +367,13 @@ heavy tier.
 - **Unit tests (fakes):**
   - adapter rules: model line only when `prompt_count` was 0; never Fable; no `decision` key
     ever; the tier sums and the 0.6 gate; MODE eligibility; once per session; no plan line in
-    Plan mode; a noul of 0.30 with `confidence` 0.70 shows nothing; the number shown equals the
-    gated number exactly;
+    Plan mode; a noul of 0.30 with `confidence` 0.70 shows nothing; the number shown is the
+    gated value formatted to two decimals (including 0.7802 → `0.78` and a value just under a
+    threshold, such as 0.8496 for 0.85, being suppressed even though it would display as `0.85`);
+  - switch precedence (regression): a `PostModelSwitch` to model B, then a transcript whose last
+    reply is still model A, keeps B; a later reply on B, timestamped after the first prompt
+    submitted after the switch, is accepted; a reply on A from the turn that was in flight
+    during the switch is ignored;
   - canonical model names; prompt-source detection on the payloads captured in check 4;
     session-state updates from `PostModelSwitch` and from the transcript, including a missing
     transcript; the question-file format; assembling a profile; SessionStart and
@@ -397,7 +424,8 @@ that need the desktop app's UI are done by the user, following written steps.
    pinned checkpoint, the three real questions, and two prompts: about 100 tokens, and one that
    fills 512 tokens. Measure: time from spawn to the first `/v1/profile` answer; first-call
    latency; warm p50 and p95 over about 20 calls; whole-process RSS and MLX peak memory.
-   - Pass: all three questions answered; choice probabilities sum to 1; each noul is in [0, 1];
+   - Pass: all three questions answered; the four choice probabilities sum to 1 within 0.0002
+     (each is rounded to four decimals); each noul is in [0, 1];
      the long prompt is marked truncated; warm p95 under about 1.0 s (otherwise lower the token
      cap); peak memory under about 1.2 GB.
    - The cold-start time goes to the user, who decides whether stage 0 needs a SessionStart
@@ -414,9 +442,12 @@ acceptance):
 1. **Fake model, then real.** With the fake model returning a fixed profile, the lines match
    §4.12 exactly and the rows are logged. With the real model, record whatever appears.
 2. **No harm.** Over at least 20 prompts: zero blocked prompts, zero hook-timeout notices, and
-   the client's own logged worst case on UserPromptSubmit at most about 1.6 s.
+   the **complete UserPromptSubmit hook duration** at most about 1.6 s worst case. The client
+   logs it from process start to exit, covering the service call, the transcript read,
+   session-state updates and logging.
 3. **Down paths.** (a) Service stopped, one prompt: nothing shown, Claude responds, the service
-   is started exactly once. (b) Model directory empty: several prompts show nothing, and
+   is started exactly once, reaches `ready` after the spawning hook has exited, and is still
+   running after that session is closed. (b) Model directory empty: several prompts show nothing, and
    nothing restarts in a loop. (c) A fake listener that never replies: the prompt goes through
    within about 1.6 s with nothing shown.
 4. **Cold first prompts.** Record the share of sessions whose first human prompt got no
