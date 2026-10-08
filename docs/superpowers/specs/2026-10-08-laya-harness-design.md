@@ -1,0 +1,491 @@
+# laya-harness — design
+
+| | |
+|---|---|
+| Status | Draft for sign-off (documentation gate). The mockup is completed by check 1's screenshots. |
+| Date | 2026-10-08 |
+| Scope | The whole system at roadmap level. Stage 0 in implementable detail. |
+| Review | Stage 0 was put through a six-lens design review before this draft (Appendix B). |
+
+## 1. What laya-harness is
+
+**A local execution router for agentic coding harnesses.** It uses Laya, a small local
+typed-decision model (laya-mlx, MLX on Apple silicon), to read each prompt you send to Claude
+Code or Codex. It classifies the prompt into a harness-neutral *execution profile*, then
+recommends how to configure the harness for that task.
+
+Boundaries that every stage keeps:
+
+- **Laya sits above the harness, never inside its agent loop.** It never launches agents, runs
+  shell commands, edits files or judges individual tool calls. It recommends at the start of a
+  task, and the harness keeps full native autonomy afterwards.
+- **Laya owns only the probabilistic part:** prompt → requirements. Reading the harness's
+  current state and comparing it with the profile is deterministic adapter code.
+- **Claude Code and Codex are not normalised into one product.** Only the semantic layer, the
+  execution profile, is shared. Each adapter translates it into its own harness's features.
+- **Confidence is per field,** and each recommendation fires on its own field's threshold.
+- **Laya's numbers are untrusted until measured.** Upstream reports base checkpoints near
+  chance on unseen typed decisions (0.362) and over-confident as shipped. Training on the
+  user's own history (stage 3) is expected to be necessary.
+
+## 2. Architecture (all stages)
+
+```
+ Claude Code / Codex hooks ──▶ client (stdlib only) ──▶ local service (127.0.0.1)
+         ▲                          │                      └─ laya-mlx checkpoint + question sets
+         │ one line to the user     │                          → execution profile (per-field p)
+         │ (later: note to harness, ▼
+         │  or stop the prompt)   harness adapter (deterministic rules)
+         └──────────────────────────┤  profile × harness state → mismatches → channel
+                                    ▼
+                         ~/.laya-harness/decisions.jsonl ──▶ measure (stage 2) ──▶ train (stage 3)
+```
+
+**Execution profile (the semantic layer).** Fields grow by stage. Mismatch types:
+MODEL, REASONING, MODE, CONTEXT, CAPABILITY, PARALLELISM_OPPORTUNITY, SKILL_OPPORTUNITY,
+PERMISSION, ENVIRONMENT, HARNESS. HARNESS (cross-harness advice) is supported by the design
+but stays off by default.
+
+**Who acts decides the channel** (stage 4 onwards; stage 0 only shows lines to the user):
+
+| Who acts | Mismatches | Channel |
+|---|---|---|
+| The user | MODEL, REASONING, PERMISSION, ENVIRONMENT, CAPABILITY, HARNESS | Stop the first prompt of a session and explain |
+| The user | CONTEXT (start fresh) | Stop the prompt that starts a new task in an old session |
+| The harness | MODE (plan first), PARALLELISM, SKILL | One short `additionalContext` note; the prompt proceeds and the harness decides |
+
+## 3. Roadmap (top-down: make it work, then refine)
+
+Each stage updates this document before any of its code is written.
+
+| Stage | Outcome |
+|---|---|
+| **0. First working version (Claude Code)** | Section 4. Prompt → hook → service → three questions → one-line suggestion → logged. Advises only, never stops a prompt. |
+| 1. Codex | The same client in a Codex `UserPromptSubmit` command hook; the Codex adapter reads `~/.codex/config.toml`. Proves the shared semantic layer. |
+| 2. Measure | Readers for Claude Code transcripts and Codex sessions; out-of-the-box accuracy per field on held-out sessions; checkpoint comparison; display thresholds tuned. |
+| 3. Learn | Training cases from outcomes, the user's labels and logged overrides; split by session; a GPU fine-tune with upstream `laya-train` (off this Mac, with explicit approval); `laya-mlx convert`; swap and re-measure. |
+| 4. Act | Prompt-stopping and harness notes switched on per field that clears its threshold. MODEL and REASONING become separate suggestions. |
+| 5. Widen | More profile fields (CONTEXT, CAPABILITY, SKILL, PERMISSION, ENVIRONMENT); other question sets ("done without proof" Stop check, turn-end notifier, bulk classifier, context picker); cross-harness advice, off by default. |
+
+## 4. Stage 0 — design
+
+### 4.1 Flow
+
+Two hooks run the same client.
+
+- **SessionStart** records the session's model in a session file and makes sure the service is
+  running. It never waits for the model to load (decision D7) and prints nothing.
+- **UserPromptSubmit** sends the prompt to the service, applies the Claude Code adapter rules,
+  prints at most two lines for the user, and logs one row.
+
+The service runs laya-mlx, answers three questions per prompt, and exits after 15 idle minutes.
+
+### 4.2 Client (hook contract)
+
+- Invoked as `laya-harness hook claude-code <Event>`. It is registered in **exec form**: the
+  absolute path of the project venv's python as `command`, and
+  `["-I", "-m", "laya_harness", "hook", "claude-code", "<Event>"]` as `args`.
+  - `-I` keeps the working directory off `sys.path` and ignores `PYTHON*` variables.
+  - One function builds this argv. `setup`, the tests and the install snippet all use it.
+- **Standard library only;** it never imports laya_mlx or MLX.
+- It reads stdin to the end, catches every exception including `SystemExit`, and **always
+  exits 0**. An exit code of 2 would block the prompt in every project.
+- **stdout is empty, or exactly one JSON object `{"systemMessage": "..."}`,** written last.
+  Anything else on stdout becomes context for Claude. SessionStart always prints nothing.
+- Diagnostics go to `~/.laya-harness/client.log`, one line per problem.
+- It calls the service with a **1.5 s total deadline**. Check 6 confirms or adjusts this.
+- The port comes from `~/.laya-harness/config.json`. Hooks in the desktop app do not inherit
+  variables exported in the user's shell, so the port is never read from an environment
+  variable.
+
+### 4.3 Starting the service
+
+- The client starts the service **only when connecting is refused**, meaning nothing is bound
+  to the port. It never starts one on a timeout, an error, a `loading` reply, or a reply that
+  is not from laya-harness.
+- The service is started fully detached, and the client does not wait:
+  `Popen([venv_python, "-I", "-m", "laya_harness.service"], stdin=DEVNULL, stdout=DEVNULL,
+  stderr=<append to ~/.laya-harness/service.log>, start_new_session=True,
+  cwd=~/.laya-harness)`. Then the client exits.
+- The client exits promptly after spawning, because a hook timeout kills everything a
+  still-running hook started.
+
+### 4.4 Service
+
+Run as `python -I -m laya_harness.service`. It never writes to stdout.
+
+**Startup order:**
+
+1. Using the standard library only: read `config.json`, then bind `127.0.0.1:<port>`. If the
+   port is taken, exit 0. **The bind is the single-instance lock,** so two sessions can never
+   load the model twice.
+2. Serve `GET /v1/health` from a thread. It returns
+   `{"app": "laya-harness", "version", "pid", "state": "loading|ready|not_ready", "reason"}`.
+   Until the model is ready, `POST /v1/profile` answers 503 `{"state": "loading"}`.
+3. Set `HF_HUB_OFFLINE=1`, import laya_mlx, and load the checkpoint **from the absolute local
+   directory in `config.json`, never by repo id.**
+   - Set `agent.cfg["max_len"] = 512`.
+   - Write the effective calibration temperatures to `service.log` once.
+   - Run one warm-up `predict()`. The state is then `ready`.
+4. **If any of step 3 fails** (missing or corrupt files, a tokenizer error, a Metal error),
+   the state becomes `not_ready` with the reason, and the service **stays bound** until its
+   idle timeout. A broken model therefore never causes a cycle of restarts, each loading about
+   1 GB.
+
+**Requests:**
+
+- The service rejects any request whose `Host` is not `127.0.0.1:<port>` or `localhost:<port>`,
+  any request with an `Origin` header, and any POST that is not `application/json`. This
+  blocks browsers reaching localhost through CSRF or DNS rebinding. Other processes run by the
+  same user are out of scope, since they can read the log anyway.
+- All MLX work runs under **one lock**. Health checks are answered on a separate thread while
+  inference runs.
+- `POST /v1/profile` takes `{"prompt": str}`. It returns Laya's raw `answers` and `usage`,
+  plus `checkpoint` (repo and SHA), `question_set` (id and sha256), and the laya-mlx and
+  laya-harness versions.
+- The questions file and config are read once at startup. **After changing code, config or
+  questions, run `laya-harness stop`.** Version checks between client and service are deferred
+  (§11).
+- Idle time is counted from the end of the last request. The service never exits mid-request.
+- A **fake-model mode** (set in `config.json`) returns fixed answers without importing
+  laya_mlx. Tests and the first acceptance step use it.
+
+### 4.5 Checkpoint and setup
+
+- **Checkpoint:** `aac6fef/laya-mlx`, the general English model (ModernBERT-large, 421M,
+  512-token context). It is pinned by repo id plus full commit SHA in the committed file
+  `laya_harness/checkpoint.json`. The SHA is copied from laya-mlx's
+  `benchmarks/results/hub-publication.json` during implementation, so any change of checkpoint
+  is a reviewed diff.
+- It was not chosen for a benchmark score. The typed-decisions checkpoint's 0.766 was measured
+  on its own four synthetic workflows and does not carry over to coding prompts. **Every
+  stage-0 checkpoint is expected to be near chance on these questions and uncalibrated for
+  them.** Stage 2 compares checkpoints.
+- **`laya-harness setup`** is run by the user. It is the only thing that touches the network,
+  and the user approves the roughly 0.9 GB download first. In order, it:
+  1. creates `~/.laya-harness` with mode 0700;
+  2. downloads the pinned commit, only the files laya-mlx needs, into
+     `~/.laya-harness/models/laya-mlx@<sha>`;
+  3. writes `config.json`: interpreter path, model directory, repo and SHA, port `47913`, and
+     mode `show`;
+  4. runs the exact registered hook argv once with a sample input;
+  5. prints the `settings.json` snippet. It never edits `settings.json` itself.
+
+### 4.6 Session state
+
+The client owns session state, one file per session:
+`~/.laya-harness/sessions/<session_id>.json` (mode 0600), holding
+`{model, model_source, prompt_count, plan_shown, updated}`.
+
+- SessionStart writes `model` only when its input contains one, and never replaces a known
+  model with a missing one. The `startup` and `fork` sources reset `prompt_count`.
+- On each **human** prompt (§4.7), the client increments `prompt_count` before calling the
+  service.
+- If check 2 shows that SessionStart misses the model chosen in the desktop app's dropdown, a
+  `PostModelSwitch` hook is added and sets `model` from `to_model`. It also prints nothing.
+
+### 4.7 Prompt source
+
+`UserPromptSubmit` also fires on turns the user did not type. Each prompt is classified from
+the hook input:
+
+| Source | Recognised by |
+|---|---|
+| task-notification | the prompt starts with `<task-notification` |
+| peer | the prompt starts with the cross-session preamble (exact text captured in check 4) |
+| subagent / workflow | `agent_id` or `agent_type` is present, or `transcript_path` contains `/subagents/` |
+| human | everything else |
+
+Non-human prompts are logged with their source. They never show a line and never change
+`prompt_count`. `/loop` and scheduled-task turns look human, which stage 0 accepts.
+
+### 4.8 Questions
+
+`questions/profile_v0.json` has an `id` and per-question display thresholds. The service
+records its sha256.
+
+| Field | Type | Question | Shown when |
+|---|---|---|---|
+| `difficulty` | choice | *quick question or tiny edit* / *routine single-area change* / *multi-file feature or debugging* / *architecture, migration or hard reasoning* | tier probability ≥ 0.6 (§4.9) |
+| `plan_first` | noul | Should this request be planned before any file is edited? | noul ≥ 0.85 plus the MODE rules |
+| `parallel` | noul | Does it contain independent subtasks that could run in parallel? | never in stage 0 (logged only) |
+
+Choice and yes/no only, because upstream calls ordinal `score` the weakest question type.
+
+### 4.9 Claude Code adapter rules
+
+Current models only, **never Fable.** Each decision logs the profile value, the harness state
+it was compared with, the mismatch type, and the channel it will use from stage 4.
+
+**MODEL + REASONING (from `difficulty`)**
+
+- **Tier:** light = P(quick) + P(routine); heavy = P(multi-file) + P(architecture). The tier
+  with the larger sum is chosen. The line is eligible only if that sum is ≥ 0.6.
+- **Suggestion:** light → Sonnet 5.5; heavy → Opus 5.5. The effort comes from the more likely
+  class within the tier: quick → low, routine → medium, multi-file → high,
+  architecture → xhigh.
+- Applies **only on the first human prompt of a session** (`prompt_count` was 0). Switching
+  models later throws away the model-scoped prompt cache.
+- Compared with the session model, using canonical names with `[1m]` and date suffixes
+  stripped. Effort is compared with `$CLAUDE_EFFORT` only if hooks receive it (check 3). Shown
+  only when something known differs.
+- If the service fails on that prompt, the session gets no model line. That is logged, and
+  acceptance records how often it happens.
+- Channel: user.
+
+**MODE (from `plan_first`)** — shown only when all of these hold:
+
+- noul ≥ 0.85;
+- `permission_mode` is not `plan`, and the prompt does not start with `/plan`;
+- it is the first human prompt, or the prompt is at least 200 characters long;
+- `plan_shown` is false for this session.
+
+The line arrives while the turn is already running. Stage 4 moves it to a harness note that
+Claude can act on itself. Channel: user now, harness from stage 4.
+
+**PARALLELISM (from `parallel`):** logged, never shown. Channel: harness from stage 4.
+
+**Numbers shown:** the tier line shows the tier's summed probability; the plan line shows
+`noul`. Laya's `confidence` field is never used for display or gating, because for `choice`
+it is normalised entropy, not a probability. These are raw scores after upstream's
+temperature scaling and are **not calibrated for this task** until stage 2 measures them.
+
+### 4.10 Decision log
+
+`~/.laya-harness/decisions.jsonl` (mode 0600) gets **one row per UserPromptSubmit,
+failures included,** unless the mode is `off`.
+
+| Group | Fields |
+|---|---|
+| Keys | `schema_version`, `ts`, `session_id`, `prompt_id`, `transcript_path`, `cwd`, `source` |
+| Outcome | `status`: decided, started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, or `suppress_reason`: below_threshold, same_setting, not_first_prompt, not_human, plan_mode, already_shown, too_short or log_only |
+| Input | `prompt`, `truncated` (from Laya's `usage`) |
+| Laya output | the raw `answers` and `usage` |
+| Versions | `checkpoint` (repo, SHA), `question_set` (id, sha256), `laya_mlx`, `laya_harness`, `adapter_rules` |
+| Compared state | session `model` and `model_source`, `permission_mode`, `claude_effort` if present |
+| Timing | `latency_ms`, `cold` |
+
+- Rows join to Claude Code transcripts on `prompt_id` (confirmed in check 4).
+- Everything stays on this Mac. This log seeds stages 2 and 3.
+
+### 4.11 Commands
+
+All commands use the standard library only, apart from the download in `setup`.
+
+| Command | Does |
+|---|---|
+| `laya-harness setup` | §4.5 |
+| `laya-harness status` | one line: down / loading / ready / not_ready (with reason), mode, checkpoint SHA, log paths |
+| `laya-harness stop` | stops the PID reported by `/v1/health`. It warns when mode is not `off`, since the next prompt restarts the service. |
+| `laya-harness mode show\|log-only\|off` | `show` is normal. `log-only` logs everything and shows nothing. `off` makes the client exit at once, without starting anything or logging. |
+
+`LAYA_HARNESS_HOME` moves the state directory, and with it `config.json` and the port, **in
+tests only.** Under the test flag, the client and service refuse to use `~/.laya-harness` or
+port 47913.
+
+### 4.12 What the user sees (copy deck — the mockup)
+
+The line is delivered as the `UserPromptSubmit` hook's `systemMessage`. It is shown to the user
+and not added to Claude's context: the hooks docs say so, and the bundled Claude Code 2.1.288
+and 2.1.289 do not pass it to the model. At most two lines, joined by `\n`, each at most 120
+characters. Stage 0 never blocks a prompt and never adds `additionalContext`.
+
+**This table, plus the two Code-tab screenshots from check 1, is the mockup.**
+
+| State | Exact text |
+|---|---|
+| (a) first human prompt, model differs, effort known | `laya · light task (p=0.78) → Sonnet 5.5 at low effort fits; you're on Opus 5.5 at high` |
+| (a′) as (a), effort unknown (check 3 fails) | `laya · light task (p=0.78) → Sonnet 5.5 at low effort fits; you're on Opus 5.5` |
+| (b) first human prompt, same model, effort differs (effort known) | `laya · heavy task (p=0.64) → high effort fits; you're on Opus 5.5 at xhigh` |
+| (c) model unknown (check 2 fails), effort known and differs | `laya · light task (p=0.78) → low effort fits; you're on high` |
+| (d) plan first | `laya · reads like a multi-step change (p=0.88) → switch to Plan mode, or tell Claude to plan first` |
+| (e) both on the first human prompt | `laya · heavy task (p=0.71) → Opus 5.5 at xhigh effort fits; you're on Sonnet 5.5 at medium` then (d) on a second line |
+| (g) nothing shown | the service is starting, loading, not ready, slow or erroring; the prompt is not human; a score is below its threshold; the setting already matches; not the first prompt (model line); plan already shown, already in Plan mode, or the prompt is too short; mode is `log-only` or `off` |
+
+If check 1 confirms a keyboard shortcut for Plan mode in the Code tab, (d) names it.
+
+## 5. Failure handling — laya stays out of the way
+
+| Situation | What happens |
+|---|---|
+| The hook cannot launch (missing interpreter, broken install) | Exec form exits 1 or 127: a non-blocking notice. Never 2, so a prompt is never blocked. |
+| Any client error | Nothing on stdout, exit 0, one line in `client.log`, a row with status `error`. |
+| Nothing bound to the port | The client starts the service detached and shows nothing (`started_service`). |
+| Service loading | The client gives up at once (`loading`). |
+| Reply over 1.5 s, or unexpected | Nothing shown (`timeout` / `error`). |
+| Port held by something that is not laya, or a listener that never replies | No service started, nothing shown, one line in `client.log`. |
+| Weights missing or corrupt, or load fails | `not_ready` with a reason; the service stays bound; nothing is downloaded and nothing restarts in a loop. |
+| Prompt longer than 512 tokens | Laya keeps the beginning; the row is marked `truncated`. |
+| Stale service after a code or config change | `laya-harness stop`. Every row records the versions that produced it. |
+
+**Explicit hook timeouts:** SessionStart 5 s, UserPromptSubmit 3 s (and PostModelSwitch 3 s, if
+added). The service listens on 127.0.0.1 only. `~/.laya-harness` is mode 0700.
+
+## 6. Testing
+
+- **Unit tests (fakes):**
+  - adapter rules: model line only when `prompt_count` was 0; never Fable; no `decision` key
+    ever; the tier sums and the 0.6 gate; MODE eligibility; once per session; no plan line in
+    Plan mode; a noul of 0.30 with `confidence` 0.70 shows nothing; the number shown equals the
+    gated number exactly;
+  - canonical model names; prompt-source detection on the payloads captured in check 4; the
+    question-file format; assembling a profile; SessionStart prints nothing.
+- **Client, process-level.** These run the exact registered argv from the shared function,
+  with a temporary `LAYA_HARNESS_HOME` and a free port. Cases: bad event name, garbage stdin,
+  service down, slow reply, unexpected reply, a foreign listener returning junk, a listener that
+  never replies. Each must give exit 0, stdout empty or one JSON object with only
+  `systemMessage`, and a service started only on connection refused.
+  - Spawn test: with the client's stdout and stderr as pipes, it starts a long-lived fake
+    service that sleeps and prints. Both pipes close within about 0.2 s of the client exiting,
+    and the child is still alive.
+- **Service (fake model, no weights):** endpoints; the Host, Origin and Content-Type checks;
+  N services started at once with a fake 3 s load, giving exactly one load while the others
+  exit 0 within about 0.5 s without importing laya_mlx; idle exit on a short timer, never
+  mid-request; a failing or corrupt load giving `not_ready` while staying bound, with several
+  prompts in a row causing at most one spawn; a missing model directory never triggering a
+  download (`snapshot_download` patched to fail the test if called).
+- **Real model:** check 6 only, run on request.
+
+## 7. Check first (throwaway, before writing anything to keep)
+
+Checks 1–5 use a throwaway hook in this project's own `.claude/settings.local.json`, which
+records the raw stdin, `$CLAUDE_EFFORT` and timestamps to a scratch file and is removed
+afterwards. Check 6 needs the checkpoint download. **The user is asked before either.** Steps
+that need the desktop app's UI are done by the user, following written steps.
+
+1. **Display.** Return a `systemMessage` with the shortest state and with the longest two-line
+   state (e). Screenshot both in the Code tab; these complete the mockup. Look for a Plan-mode
+   shortcut. If the line does not render, the fallbacks in order are a display-only band in the
+   Code tab (a Claude Code plugin) and a macOS notification. The copy deck and mockup are then
+   redone for that surface before sign-off.
+2. **Model.** Pick a non-default model in the dropdown before the first message, then send a
+   prompt. Record what SessionStart receives, and whether `PostModelSwitch` fires (and when,
+   relative to UserPromptSubmit) on that pick, on a mid-session change, and on resume. If no
+   model ever arrives, state (c) ships.
+3. **Effort.** Is `$CLAUDE_EFFORT` set in the UserPromptSubmit hook's environment? If not,
+   (a′) ships and (b) is dropped.
+4. **Payloads.** Trigger a typed prompt, a background subagent reporting back, a background
+   Bash command finishing, a message from another session, and a small workflow. For each,
+   record whether the hook fired, plus the start of `prompt`, `agent_id`, `agent_type`,
+   `transcript_path` and `session_id`. Confirm `prompt_id` equals the transcript's `promptId`.
+   Keep one UserPromptSubmit and one SessionStart payload, with the prompt text scrubbed, as
+   test fixtures.
+5. **Exec form with a space.** An exec-form hook whose absolute command path contains a space
+   runs in the Code tab.
+6. **Real model on the M2.** One script, with the desktop app open, `HF_HUB_OFFLINE=1`, the
+   pinned checkpoint, the three real questions, and two prompts: about 100 tokens, and one that
+   fills 512 tokens. Measure: time from spawn to the first `/v1/profile` answer; first-call
+   latency; warm p50 and p95 over about 20 calls; whole-process RSS and MLX peak memory.
+   - Pass: all three questions answered; choice probabilities sum to 1; each noul is in [0, 1];
+     the long prompt is marked truncated; warm p95 under about 1.0 s (otherwise lower the token
+     cap); peak memory under about 1.2 GB.
+   - The cold-start time goes to the user, who decides whether stage 0 needs a SessionStart
+     wait (decision D7).
+   - Optional, asked together with the download: run the three questions over 50–100 past
+     prompts and count how often each line would fire. Raise a threshold if its line would
+     fire in more than about one session in five.
+
+## 8. Acceptance (stage 0 is done when)
+
+In real Code-tab sessions, with the hooks registered as in §10 (project-level during
+acceptance):
+
+1. **Fake model, then real.** With the fake model returning a fixed profile, the lines match
+   §4.12 exactly and the rows are logged. With the real model, record whatever appears.
+2. **No harm.** Over at least 20 prompts: zero blocked prompts, zero hook-timeout notices, and
+   the client's own logged worst case on UserPromptSubmit at most about 1.6 s.
+3. **Down paths.** (a) Service stopped, one prompt: nothing shown, Claude responds, the service
+   is started exactly once. (b) Model directory empty: several prompts show nothing, and
+   nothing restarts in a loop. (c) A fake listener that never replies: the prompt goes through
+   within about 1.6 s with nothing shown.
+4. **Cold first prompts.** Record the share of sessions whose first human prompt got no
+   profile. This is information for decision D7, not a gate.
+5. **Off switch.** With `laya-harness mode off`, no row is written and nothing is started.
+
+## 9. Build order and process gates
+
+1. Sign-off on this document and the mockup (§4.12 plus check 1's screenshots).
+2. With approval for the package download (about 300 MB installed), create the project venv
+   (Python 3.11, laya-mlx 0.3.0 pinned, pytest), add a trivial test, and run it.
+3. Draft the two-agent gate profile from commands that have actually been run: pytest on fakes
+   for implementers; controller-only tiers for the real model (check 6), real-session acceptance
+   and the install diff; visual verification against §4.12. The user signs it off before the
+   first implementer is dispatched.
+4. Implementation plan (writing-plans), then the build.
+5. Acceptance (§8), then install (§10).
+
+## 10. Install and uninstall
+
+- During acceptance, the hooks live in this project's `.claude/settings.local.json`.
+- At the end of stage 0, two exec-form entries go into the user-level `~/.claude/settings.json`
+  so laya runs in every project: SessionStart (5 s) and UserPromptSubmit (3 s), plus
+  PostModelSwitch (3 s) if check 2 requires it. `setup` prints the snippet and has already run
+  the exact command. **The diff is shown to the user and applied only with approval.**
+- `laya-harness mode off` turns laya off without touching settings. Removing the entries
+  uninstalls it. `~/.laya-harness` holds every piece of state.
+
+## 11. Deferred
+
+| To | Item |
+|---|---|
+| Stage 2 | Version checks between client and service, reloading the questions file without a restart, a stuck-inference watchdog, an outage notice. |
+| Stage 2 | Memory pressure on the 8 GiB Mac: latency after 10–15 idle minutes with sessions open; then set_wired_limit, cache limits, or accepting logged misses. |
+| Stage 2 | Question wording: an effort-scale `difficulty` without topic words, compared on history. |
+| Stage 2 | Checkpoint comparison (English, typed-decisions, multilingual) on a labelled set; tune thresholds on history; apply the prompt-source filter in the history reader. |
+| Stage 3 | Refit per-field thresholds and calibration from outcomes and labels. |
+| Stage 4 | MODEL and REASONING as separate suggestions (effort on later prompts; model after clear, compact or resume); harness notes for MODE and PARALLELISM; prompt-stopping never fires on non-human turns; calibrated wording for scores. |
+| After D7 | A bounded SessionStart wait, a longer idle timeout, or a launchd agent, chosen from check 6 and acceptance step 4. |
+
+## Appendix A — Decisions
+
+| # | Date | Decision |
+|---|---|---|
+| D1 | 2026-10-07 | Laya is a local execution router above the harness, not a model router and never inside the agent loop. |
+| D2 | 2026-10-07 | Build top-down: a crude end-to-end version first, then refine stage by stage. |
+| D3 | 2026-10-07 | Order: Claude Code (0), Codex (1), measure (2), learn (3), act (4), widen (5). |
+| D4 | 2026-10-07 | Training on the user's own history is part of the plan, not optional. |
+| D5 | 2026-10-07 | The project lives at `~/Code Playground/laya-harness`, package `laya_harness`, in its own venv. |
+| D6 | 2026-10-06 | When stopping prompts is switched on (stage 4), user-actionable mismatches stop the first prompt with an explanation. |
+| D7 | 2026-10-08 | No SessionStart wait in stage 0. Measure cold first prompts, then decide. |
+| D8 | 2026-10-08 | Plan-first is shown in stage 0; parallel is logged only. |
+| D9 | 2026-10-08 | Start with the general English checkpoint, pinned by SHA. |
+
+## Appendix B — Design review (2026-10-07 to 2026-10-08)
+
+Six independent critics (hook mechanics, model validity, walking-skeleton discipline,
+operations and security, product fit, verification and process) raised 22 findings, merged
+from 40: 15 major and 7 minor. Each was checked twice, once trying to refute it and once
+deciding whether to fix it now or later. None was refuted: 8 were confirmed as stated, and 14
+were real but overstated in severity or in the size of the fix.
+19 were marked fix-now and 3 deferred; a final completeness pass added 5. The automated rewrite
+was then trimmed to keep stage 0 thin.
+
+| Id | Finding (short) | Resolution |
+|---|---|---|
+| F1 | Spawning from a hook can leak pipes or stdout into Claude's context | §4.3 spawn contract; explicit hook timeouts; spawn test |
+| F2 | Launch failures can exit 2 and block every prompt | §4.2 exec form, `-I`, catch everything, exit 0 |
+| F3 | SessionStart cannot warm the model before the first prompt | D7: no wait; measured in check 6 and acceptance step 4 |
+| F4 | Loading by repo id contacts the network on every start | §4.4 offline local load; §4.5 pinned SHA, setup only |
+| F5 | A TCP port alone allows concurrent ~1 GB loads | §4.4 bind before import; spawn only on connection refused; Host/Origin checks |
+| F6 | The prompt hook fires on machine turns | §4.7 prompt source |
+| F7 | Session state had no owner | §4.6 session files |
+| F8 | The log could not be joined or attributed | §4.10 |
+| F9 | No display thresholds | §4.8, §4.9 |
+| F10 | Plan-first and parallel bypassed the adapter | §4.9 MODE rule; parallel logged only |
+| F11 | Model and effort bundled | Deferred to stage 4 |
+| F12 | The typed-decisions score does not transfer | D9; §4.5 |
+| F13 | Long prompts may exceed the time budget | 512-token cap; check 6 |
+| F14 | Memory pressure on 8 GiB | Deferred to stage 2 |
+| F15 | No gate-profile step | §9 |
+| F16 | `p=` was not tied to a field | §4.9 numbers shown |
+| F17 | Question wording mixes size and topic | Deferred to stage 2 |
+| F18 | Check 1 vs Claude receiving the line | Display-only, cited from the docs and shipped code |
+| F19 | No version handshake or health escalation | Versions in every row; the rest deferred to stage 2 |
+| F20 | Lifecycle commands undefined | §4.11 |
+| F21 | Acceptance not measurable | §8 |
+| F22 | Copy only for two states | §4.12 copy deck |
+| C1 | Threading and watchdog | One lock around MLX; watchdog deferred |
+| C2 | SessionStart waiting 8 s when broken | Moot under D7 |
+| C3 | Load failures cause a restart loop | §4.4 step 4: `not_ready`, stays bound |
+| C4 | Code changes not picked up | `laya-harness stop`; versions per row |
+| C5 | UI steps and screenshots undefined | §7 and §8: UI steps done by the user |
