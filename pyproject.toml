@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "laya-harness"
+version = "0.0.0"
+description = "Local execution router for agentic coding harnesses, built on laya-mlx."
+requires-python = ">=3.11"
+dependencies = ["laya-mlx==0.3.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["laya_harness*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["real_model: loads the pinned checkpoint from ~/.laya-harness; controller-only gate"]
+addopts = "-m 'not real_model'"
