@@ -241,15 +241,22 @@ both start unknown. They are filled in for logging as they become visible:
   `switched_at`, and clears `first_prompt_after_switch_at`. The next human prompt sets
   `first_prompt_after_switch_at` to its own submission time.
 - From the second human prompt on, the client reads the transcript's last assistant row and
-  takes `effort`, and takes `message.model` (`model_source: transcript`) **only if no switch is
+  takes its `effort` as the row carries it (none if the row has none, so a stale effort is never
+  logged against a model that takes no effort), and takes `message.model` (`model_source: transcript`) **only if no switch is
   pending**. A switch is pending until the transcript holds an assistant row timestamped after
-  `first_prompt_after_switch_at`. Assistant rows carry no `promptId`, so timestamps are the
+  `first_prompt_after_switch_at` (strictly after; a row without a timestamp never ends a
+  pending switch). Assistant rows carry no `promptId`, so timestamps are the
   link. This matters because check 2 saw the transcript still showing the old model after a
   switch. Without the rule, a stale reply would overwrite the switch and log the old model
   against a prompt that runs on the new one.
-- The client reads only the transcript's tail (the last 256 KB) to keep the hook fast. A
-  missing, unreadable or lagging transcript leaves the values as they were.
-- The `startup` and `fork` sources reset `prompt_count`. On each **human** prompt (§4.7), the
+- The client reads only the transcript's tail (the last 256 KB) to keep the hook fast, skipping
+  a cut-off first line, rows that are not JSON objects, sidechain rows and synthetic models. A
+  `transcript_path` that is not a string, or a missing or unreadable transcript, leaves the
+  values as they were. The reader cannot detect a lagging transcript; the pending-switch rule
+  above handles that.
+- A session file that cannot be read as a JSON object starts again from the defaults.
+- The `startup` and `fork` sources reset `prompt_count`, `model_line_shown` and `plan_shown`;
+  `resume`, `clear` and `compact` leave them alone. On each **human** prompt (§4.7), the
   client increments `prompt_count` before calling the service.
 
 ### 4.7 Prompt source
@@ -262,8 +269,11 @@ the hook input:
 | task-notification | the prompt starts with `<task-notification` |
 | agent | the prompt starts with `<agent-message` (a subagent handing back) |
 | peer | the prompt starts with `<cross-session-message` (another session) |
-| subagent | `agent_id` or `agent_type` is present, or `transcript_path` contains `/subagents/` (not seen in the desktop app; kept as a guard) |
+| subagent | `agent_id` is present, or `transcript_path` contains `/subagents/` (not seen in the desktop app; kept as a guard). `agent_type` alone is not used: the hooks docs say it is also set in a main session started with `--agent`. |
 | human | everything else |
+
+The prefixes are checked first, so a prefixed prompt is classified by its prefix even when it
+also carries `agent_id`.
 
 Non-human prompts are logged with their source and are **not sent to the service** (status
 `skipped`), which saves the inference for turns that never show a line. They never show a line
