@@ -24,8 +24,8 @@ block, never added context.
 before any task). **Mockup:** spec §4.12 plus `docs/mockups/stage0-check1-*.png`.
 
 **How this plan was verified (plan preflight):** every code block below was executed in a
-throwaway copy of the repo at commit `1606ae9` (the two later commits, `c52e103` and `d5bba22`, change only the spec and `README.md`) before being written here, and is copied from those
-files, not retyped. In that copy the full suite passed repeatedly (`147 passed, 1 deselected` with every task, after the review rounds of Tasks 1–3), the
+throwaway copy of the repo at commit `1606ae9` (every later commit changes only `docs/` and `README.md`) before being written here, and is copied from those
+files, not retyped. In that copy the full suite passed repeatedly (`180 passed, 1 deselected` with every task, after the review rounds of Tasks 1–4), the
 controller-only gate passed (`.venv/bin/python -m pytest -q -m real_model` → `1 passed`, cold start
 to ready plus a warm call in 3.6 s), and each task's tests were run against the stubs in plan order
 with later tasks absent: every test failed, none passed against a stub (the RED counts below).
@@ -36,7 +36,7 @@ The user adopted a new target architecture: a Bridge behind Obsidian and web fro
 **Laya as the tier router** and **Obsidian as the memory**. This plan therefore ends early:
 
 - **Execute:** Tasks 1–5, then **Task 8 Step 1** (the real-model smoke test of the service), then
-  the controller gates `.venv/bin/python -m pytest -q` (expected `114 passed, 1 deselected`) and
+  the controller gates `.venv/bin/python -m pytest -q` (expected `147 passed, 1 deselected`) and
   `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
 - **Parked, do not dispatch:** Task 6 (hook client), Task 7 (commands), and Task 8 Steps 2–9
   (console script, setup, acceptance, install). Their verified code stays in this plan for the
@@ -1764,7 +1764,8 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
 **Interfaces:**
 - Consumes: `resources.questions()`, `resources.catalog()`, `resources.fit()` (Task 2).
 - Produces:
-- `catalog`: `NEVER_FAMILIES`, `canonical(model_id) -> str | None`, `eligible(model) -> bool`,
+- `catalog`: `NEVER = ("fable", "mythos")`, `canonical(model_id) -> str | None`, `never(model) -> bool`,
+  `eligible(model) -> bool`,
   `select(cls, catalog, fit) -> {"model", "display", "effort", "class"} | None`, `known(catalog) -> set`.
 - `copytext`: `MAX_LEN = 120`, `model_line(tier, tier_p, display, effort) -> str`, `plan_line(noul) -> str`.
 - `adapter_claude_code`: `RULES_VERSION = "claude_code_v0"`,
@@ -1772,7 +1773,7 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
   `decide(answers, *, first_human, plan_shown, permission_mode, prompt, display, catalog, fit, session)
   -> {"lines", "line_for", "suppress_reason", "suggestion", "mismatches"}`.
 
-> Mockup: the §4.12 copy deck. There is no capturable surface until Task 8, so the visual review is recorded **N/A** here; the unit tests compare the exact strings.
+> Revised after review round 1: equal-price versions go to the newest, compared number by number (5.5 over 5, 4.10 over 4.8); an option qualifies only if its model supports its effort, and an unresolvable option falls through to the next; Fable and Mythos are refused by family, id or display name in any case; and 33 more tests pin the gate edges, the literal copy-deck rows, the suppress-reason precedence, the `/plan` cases and all three `mismatches` entries (spec §4.9, §4.13 as of 03bab0d). Mockup: the §4.12 copy deck. There is no capturable surface until Task 8, so the visual review is recorded **N/A** here; the unit tests compare the exact strings.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1804,10 +1805,18 @@ def answers(quick=0.4, routine=0.3, multi=0.2, arch=0.1, plan=0.2, parallel=0.1,
 
 
 def run(a, *, first_human=True, plan_shown=False, permission_mode="auto", prompt="fix the typo",
-        cat=CATALOG, fit=FIT):
+        cat=CATALOG, fit=FIT, session=None):
     return adapter.decide(a, first_human=first_human, plan_shown=plan_shown,
                           permission_mode=permission_mode, prompt=prompt, display=DISPLAY,
-                          catalog=cat, fit=fit, session={"model": None, "effort": None})
+                          catalog=cat, fit=fit, session=session or {"model": None, "effort": None})
+
+
+def allow(*ids):
+    cat = copy.deepcopy(CATALOG)
+    for m in cat["models"]:
+        if m["id"] in ids:
+            m["allowed"] = True
+    return cat
 
 
 # --- catalog selection (spec §4.13) ---------------------------------------------------
@@ -1815,20 +1824,76 @@ def run(a, *, first_human=True, plan_shown=False, permission_mode="auto", prompt
 def test_default_fit_picks_cheapest_allowed():
     assert catalog.select("quick", CATALOG, FIT) == {
         "model": "claude-haiku-5-5", "display": "Haiku 5.5", "effort": "low", "class": "quick"}
-    assert catalog.select("routine", CATALOG, FIT)["model"] == "claude-sonnet-5-5"
-    assert catalog.select("multi_file", CATALOG, FIT)[("model")] == "claude-opus-5-5"
-    assert catalog.select("architecture", CATALOG, FIT)["effort"] == "xhigh"
+    assert catalog.select("routine", CATALOG, FIT) == {
+        "model": "claude-sonnet-5-5", "display": "Sonnet 5.5", "effort": "medium", "class": "routine"}
+    assert catalog.select("multi_file", CATALOG, FIT) == {
+        "model": "claude-opus-5-5", "display": "Opus 5.5", "effort": "high", "class": "multi_file"}
+    assert catalog.select("architecture", CATALOG, FIT) == {
+        "model": "claude-opus-5-5", "display": "Opus 5.5", "effort": "xhigh", "class": "architecture"}
 
 
-def test_ties_go_to_newest_version():
+@pytest.mark.parametrize("options", [
+    [{"model": "claude-sonnet-5", "effort": "medium"}, {"model": "claude-sonnet-5-5", "effort": "medium"}],
+    [{"model": "claude-sonnet-5-5", "effort": "medium"}, {"model": "claude-sonnet-5", "effort": "medium"}],
+    [{"family": "sonnet", "effort": "medium"}, {"model": "claude-sonnet-5", "effort": "medium"}],
+])
+def test_price_ties_go_to_the_newest_version(options):
+    # Sonnet 5 and Sonnet 5.5 cost the same; "5" must not beat "5.5"
+    choice = catalog.select("routine", allow("claude-sonnet-5"), {"classes": {"routine": options}})
+    assert choice["model"] == "claude-sonnet-5-5"
+
+
+def test_versions_compare_number_by_number():
+    cat = {"models": [
+        {"id": "x-4-8", "display": "X 4.8", "family": "x", "version": "4.8", "price": {"input": 1.0},
+         "effort_levels": ["low"], "in_picker": True, "allowed": True},
+        {"id": "x-4-10", "display": "X 4.10", "family": "x", "version": "4.10", "price": {"input": 1.0},
+         "effort_levels": ["low"], "in_picker": True, "allowed": True},
+    ]}
+    fit = {"classes": {"quick": [{"model": "x-4-8", "effort": "low"}, {"model": "x-4-10", "effort": "low"}]}}
+    assert catalog.select("quick", cat, fit)["model"] == "x-4-10"
+    assert catalog.select("quick", cat, {"classes": {"quick": [{"family": "x", "effort": "low"}]}})["model"] == "x-4-10"
+
+
+def test_base_price_decides_even_when_tiered():
+    # Haiku 5.5's above-100k input price (0.5) would lose to a 0.2 model; its base price (0.1) wins
+    cat = copy.deepcopy(CATALOG)
+    cat["models"].append({"id": "y-1", "display": "Y 1", "family": "y", "version": "1", "price": {"input": 0.2},
+                          "effort_levels": ["low"], "in_picker": True, "allowed": True})
+    fit = {"classes": {"quick": [{"model": "y-1", "effort": "low"}, {"family": "haiku", "effort": "low"}]}}
+    assert catalog.select("quick", cat, fit)["model"] == "claude-haiku-5-5"
+
+
+def test_unresolvable_option_falls_through_to_the_next():
     cat = copy.deepcopy(CATALOG)
     for m in cat["models"]:
-        if m["id"] == "claude-sonnet-5":
-            m["allowed"] = True  # same price as Sonnet 5.5
-    assert catalog.select("routine", cat, FIT)["model"] == "claude-sonnet-5-5"
+        if m["family"] == "haiku":
+            m["allowed"] = False
+    assert catalog.select("quick", cat, FIT) == {
+        "model": "claude-sonnet-5-5", "display": "Sonnet 5.5", "effort": "low", "class": "quick"}
+    fit = {"classes": {"quick": [{"model": "claude-unknown-9", "effort": "low"}, {"family": "sonnet", "effort": "low"}]}}
+    assert catalog.select("quick", CATALOG, fit)["model"] == "claude-sonnet-5-5"
 
 
-def test_fable_never_suggested_even_if_allowed():
+@pytest.mark.parametrize("family, model_id, display", [
+    ("fable", "claude-fable-5-1", "Fable 5.1"),
+    ("Fable", "claude-fable-5-1", "Fable 5.1"),
+    (None, "claude-fable-5", "Fable 5"),
+    ("opus", "claude-fable-5", "Fable 5"),
+    ("opus", "claude-x", "Claude Mythos 5.1"),
+])
+def test_fable_and_mythos_never_suggested_in_any_form(family, model_id, display):
+    model = {"id": model_id, "display": display, "version": "9", "price": {"input": 0.01},
+             "effort_levels": ["high"], "in_picker": True, "allowed": True}
+    if family is not None:
+        model["family"] = family
+    cat = {"models": [model]}
+    for fit in ({"classes": {"architecture": [{"model": model_id, "effort": "high"}]}},
+                {"classes": {"architecture": [{"family": family or "opus", "effort": "high"}]}}):
+        assert catalog.select("architecture", cat, fit) is None
+
+
+def test_fable_never_suggested_even_if_the_catalog_allows_it():
     cat = copy.deepcopy(CATALOG)
     for m in cat["models"]:
         m["allowed"] = True
@@ -1840,18 +1905,15 @@ def test_fable_never_suggested_even_if_allowed():
 def test_disallowed_or_not_in_picker_is_skipped():
     fit = {"classes": {"quick": [{"model": "claude-haiku-4-5", "effort": None}]}}
     assert catalog.select("quick", CATALOG, fit) is None  # Haiku 4.5 is opt-in
-    cat = copy.deepcopy(CATALOG)
+    cat = allow("claude-haiku-4-5")
     for m in cat["models"]:
         if m["id"] == "claude-haiku-4-5":
-            m["allowed"], m["in_picker"] = True, False
+            m["in_picker"] = False
     assert catalog.select("quick", cat, fit) is None
 
 
 def test_older_version_only_when_named_and_nothing_cheaper():
-    cat = copy.deepcopy(CATALOG)
-    for m in cat["models"]:
-        if m["id"] == "claude-opus-4-8":
-            m["allowed"] = True
+    cat = allow("claude-opus-4-8")
     named = {"classes": {"multi_file": [{"model": "claude-opus-4-8", "effort": "high"}]}}
     assert catalog.select("multi_file", cat, named)["model"] == "claude-opus-4-8"
     both = {"classes": {"multi_file": [{"model": "claude-opus-4-8", "effort": "high"},
@@ -1861,20 +1923,31 @@ def test_older_version_only_when_named_and_nothing_cheaper():
 
 
 def test_model_without_effort_levels_is_named_without_one():
-    cat = copy.deepcopy(CATALOG)
-    for m in cat["models"]:
-        if m["id"] == "claude-haiku-4-5":
-            m["allowed"] = True
-    fit = {"classes": {"quick": [{"model": "claude-haiku-4-5", "effort": None},
-                                 {"model": "claude-haiku-4-5", "effort": "low"}]}}
-    assert catalog.select("quick", cat, fit) == {
+    cat = allow("claude-haiku-4-5")
+    lone = {"classes": {"quick": [{"model": "claude-haiku-4-5", "effort": None}]}}
+    assert catalog.select("quick", cat, lone) == {
         "model": "claude-haiku-4-5", "display": "Haiku 4.5", "effort": None, "class": "quick"}
+
+
+def test_option_with_an_unsupported_effort_does_not_qualify():
+    cat = allow("claude-haiku-4-5", "claude-opus-4-6")
+    assert catalog.select("quick", cat, {"classes": {"quick": [{"model": "claude-haiku-4-5", "effort": "low"}]}}) is None
+    fit = {"classes": {"architecture": [{"model": "claude-opus-4-6", "effort": "xhigh"},
+                                        {"family": "opus", "effort": "xhigh"}]}}
+    assert catalog.select("architecture", cat, fit)["model"] == "claude-opus-5-5"
 
 
 def test_canonical_names():
     assert catalog.canonical("claude-opus-5-5[1m]") == "claude-opus-5-5"
     assert catalog.canonical("Claude-Sonnet-4-5-20250929") == "claude-sonnet-4-5"
     assert catalog.canonical(None) is None
+
+
+def test_known_lists_every_catalog_id_canonically():
+    known = catalog.known(CATALOG)
+    assert known == {catalog.canonical(m["id"]) for m in CATALOG["models"]}
+    assert len(known) == 12 and {"claude-fable-5-1", "claude-fable-5"} <= known
+    assert catalog.canonical("claude-opus-5-5[1m]") in known
 
 
 # --- tier gate and model line (spec §4.9) ----------------------------------------------
@@ -1884,6 +1957,15 @@ def test_tier_sum_is_rounded_and_picks_more_likely_class():
         "light", 0.8, "routine")
     assert adapter.tier_and_class({"quick": 0.05, "routine": 0.05, "multi_file": 0.3, "architecture": 0.6}) == (
         "heavy", 0.9, "architecture")
+    assert adapter.tier_and_class({"quick": 0.05, "routine": 0.05, "multi_file": 0.6, "architecture": 0.3}) == (
+        "heavy", 0.9, "multi_file")
+
+
+def test_ties_go_lighter():
+    assert adapter.tier_and_class({"quick": 0.25, "routine": 0.25, "multi_file": 0.25, "architecture": 0.25}) == (
+        "light", 0.5, "quick")
+    assert adapter.tier_and_class({"quick": 0.05, "routine": 0.05, "multi_file": 0.45, "architecture": 0.45}) == (
+        "heavy", 0.9, "multi_file")
 
 
 def test_model_line_on_first_prompt_above_gate():
@@ -1893,6 +1975,22 @@ def test_model_line_on_first_prompt_above_gate():
     assert d["suppress_reason"]["model"] is None
 
 
+def test_tier_exactly_at_the_gate_shows():
+    d = run(answers(quick=0.1, routine=0.7, multi=0.1, arch=0.1))  # 0.1 + 0.7 carries float noise
+    assert d["lines"] == ["laya · light task (p=0.80) → Sonnet 5.5 at medium effort fits this task"]
+
+
+@pytest.mark.parametrize("quick, routine", [(0.4, 0.3999), (0.4501, 0.3498)])
+def test_tier_just_under_the_gate_is_silent(quick, routine):
+    d = run(answers(quick=quick, routine=routine, multi=0.1, arch=1 - quick - routine - 0.1))
+    assert d["lines"] == [] and d["suppress_reason"]["model"] == "below_threshold" and d["suggestion"] is None
+
+
+def test_multi_file_line():
+    d = run(answers(quick=0.03, routine=0.06, multi=0.61, arch=0.3))
+    assert d["lines"] == ["laya · heavy task (p=0.91) → Opus 5.5 at high effort fits this task"]
+
+
 def test_heavy_line_matches_copy_deck():
     d = run(answers(quick=0.03, routine=0.06, multi=0.3, arch=0.61))
     assert d["lines"][0] == "laya · heavy task (p=0.91) → Opus 5.5 at xhigh effort fits this task"
@@ -1900,24 +1998,51 @@ def test_heavy_line_matches_copy_deck():
 
 def test_model_line_only_on_first_human_prompt():
     d = run(answers(quick=0.5, routine=0.36), first_human=False)
-    assert d["lines"] == [] and d["suppress_reason"]["model"] == "not_first_prompt"
-
-
-def test_below_gate_is_silent():
-    d = run(answers(quick=0.5, routine=0.29, multi=0.11, arch=0.1))
-    assert d["lines"] == [] and d["suppress_reason"]["model"] == "below_threshold"
+    assert d["lines"] == [] and d["suppress_reason"]["model"] == "not_first_prompt" and d["suggestion"] is None
 
 
 def test_no_fit_is_silent():
     d = run(answers(quick=0.5, routine=0.36), fit={"classes": {}})
-    assert d["lines"] == [] and d["suppress_reason"]["model"] == "no_fit"
+    assert d["lines"] == [] and d["suppress_reason"]["model"] == "no_fit" and d["suggestion"] is None
 
 
 def test_display_formats_gated_value_to_two_decimals():
-    d = run(answers(quick=0.4401, routine=0.3401, multi=0.11, arch=0.1098))
-    assert "(p=0.78)" not in "".join(d["lines"])  # 0.7802 < 0.8: gated on the raw value
-    d = run(answers(quick=0.4501, routine=0.3501, multi=0.1, arch=0.0998))
+    d = run(answers(quick=0.4401, routine=0.3401, multi=0.11, arch=0.1098))  # 0.7802
+    assert d["lines"] == [] and d["suppress_reason"]["model"] == "below_threshold"
+    d = run(answers(quick=0.4501, routine=0.3501, multi=0.1, arch=0.0998))  # 0.8002
     assert d["lines"][0].startswith("laya · light task (p=0.80) →")
+
+
+# --- copy deck (spec §4.12): the literal spec text --------------------------------------
+
+@pytest.mark.parametrize("line, spec_text", [
+    (lambda: copytext.model_line("light", 0.86, "Haiku 5.5", "low"),
+     "laya · light task (p=0.86) → Haiku 5.5 at low effort fits this task"),
+    (lambda: copytext.model_line("light", 0.86, "Sonnet 5.5", "medium"),
+     "laya · light task (p=0.86) → Sonnet 5.5 at medium effort fits this task"),
+    (lambda: copytext.model_line("light", 0.86, "Haiku 4.5", None),
+     "laya · light task (p=0.86) → Haiku 4.5 fits this task"),
+    (lambda: copytext.model_line("heavy", 0.91, "Opus 5.5", "xhigh"),
+     "laya · heavy task (p=0.91) → Opus 5.5 at xhigh effort fits this task"),
+    (lambda: copytext.plan_line(0.88),
+     "laya · reads like a multi-step change (p=0.88) → Plan mode (mode menu, then 4), or tell Claude to plan first"),
+])
+def test_copy_deck_rows(line, spec_text):
+    assert line() == spec_text
+
+
+def test_display_rounds_to_two_decimals():
+    assert "(p=0.86)" in copytext.plan_line(0.8567)
+    assert "(p=0.81)" in copytext.model_line("light", 0.8051, "Haiku 5.5", "low")
+    assert "(p=0.78)" in copytext.model_line("light", 0.7802, "Haiku 5.5", "low")
+
+
+def test_every_copy_string_fits_120_chars():
+    for m in CATALOG["models"]:
+        for effort in m["effort_levels"] + [None]:
+            for tier in ("light", "heavy"):
+                assert len(copytext.model_line(tier, 0.99, m["display"], effort)) <= 120
+    assert len(copytext.plan_line(0.99)) <= 120
 
 
 # --- MODE line (spec §4.9) -------------------------------------------------------------
@@ -1928,20 +2053,32 @@ def test_plan_line_shown_on_first_prompt():
                               "then 4), or tell Claude to plan first")
 
 
+def test_plan_exactly_at_the_threshold_shows():
+    d = run(answers(plan=0.85))
+    assert d["lines"] == [copytext.plan_line(0.85)] and "(p=0.85)" in d["lines"][0]
+
+
 def test_plan_below_threshold_even_if_it_would_display_as_threshold():
     d = run(answers(plan=0.8496))
     assert d["lines"] == [] and d["suppress_reason"]["plan"] == "below_threshold"
 
 
-def test_plan_uses_noul_never_confidence():
-    d = run(answers(plan=0.30, plan_confidence=0.70))
-    assert d["lines"] == []
+@pytest.mark.parametrize("noul, confidence, shown", [(0.30, 0.70, False), (0.90, 0.10, True), (0.30, 0.99, False)])
+def test_plan_uses_noul_never_confidence(noul, confidence, shown):
+    d = run(answers(plan=noul, plan_confidence=confidence))
+    assert d["lines"] == ([copytext.plan_line(noul)] if shown else [])
 
 
-@pytest.mark.parametrize("mode, prompt", [("plan", "x" * 300), ("auto", "/plan " + "x" * 300)])
+@pytest.mark.parametrize("mode, prompt", [("plan", "x" * 300), ("auto", "/plan " + "x" * 300),
+                                         ("auto", "   /plan " + "x" * 300), ("auto", "/plan")])
 def test_no_plan_line_in_plan_mode(mode, prompt):
-    d = run(answers(plan=0.95), permission_mode=mode, prompt=prompt, first_human=False)
-    assert d["suppress_reason"]["plan"] == "plan_mode"
+    d = run(answers(plan=0.95), permission_mode=mode, prompt=prompt)
+    assert d["lines"] == [] and d["suppress_reason"]["plan"] == "plan_mode"
+
+
+def test_plan_mentioned_mid_prompt_does_not_suppress():
+    d = run(answers(plan=0.95), prompt="see the /plan command docs " + "x" * 200)
+    assert d["lines"] == [copytext.plan_line(0.95)]
 
 
 def test_plan_needs_first_prompt_or_200_chars():
@@ -1954,11 +2091,35 @@ def test_plan_line_once_per_session():
     assert d["lines"] == [] and d["suppress_reason"]["plan"] == "already_shown"
 
 
+@pytest.mark.parametrize("kwargs, model_reason, plan_reason", [
+    (dict(a=answers(quick=0.4, routine=0.3, plan=0.5), first_human=False), "not_first_prompt", "below_threshold"),
+    (dict(a=answers(plan=0.5), permission_mode="plan"), "below_threshold", "below_threshold"),
+    (dict(a=answers(plan=0.9), permission_mode="plan", first_human=False, prompt="x", plan_shown=True),
+     "not_first_prompt", "plan_mode"),
+    (dict(a=answers(plan=0.9), first_human=False, prompt="x", plan_shown=True), "not_first_prompt", "too_short"),
+])
+def test_suppress_reason_precedence(kwargs, model_reason, plan_reason):
+    d = run(kwargs.pop("a"), **kwargs)
+    assert d["suppress_reason"] == {"model": model_reason, "plan": plan_reason}
+
+
 def test_both_lines_model_first():
     d = run(answers(quick=0.03, routine=0.06, multi=0.3, arch=0.61, plan=0.91))
     assert len(d["lines"]) == 2 and d["lines"][0].startswith("laya · heavy task")
-    assert d["line_for"] == {"model": d["lines"][0], "plan": d["lines"][1]}
     assert d["lines"][1].startswith("laya · reads like")
+    assert d["line_for"] == {"model": d["lines"][0], "plan": d["lines"][1]}
+
+
+def test_mismatches_record_profile_state_and_channel():
+    d = run(answers(quick=0.03, routine=0.06, multi=0.3, arch=0.61, plan=0.91, parallel=0.42),
+            permission_mode="acceptEdits", session={"model": "claude-opus-4-7", "effort": "high"})
+    assert d["mismatches"] == [
+        {"type": "MODEL+REASONING", "profile": {"tier": "heavy", "tier_p": 0.91, "class": "architecture"},
+         "state": {"model": "claude-opus-4-7", "effort": "high"}, "channel_later": "user"},
+        {"type": "MODE", "profile": {"plan_first": 0.91}, "state": {"permission_mode": "acceptEdits"},
+         "channel_later": "harness"},
+        {"type": "PARALLELISM_OPPORTUNITY", "profile": {"parallel": 0.42}, "state": {}, "channel_later": "harness"},
+    ]
 
 
 def test_parallel_is_logged_never_shown():
@@ -1968,17 +2129,10 @@ def test_parallel_is_logged_never_shown():
             "channel_later": "harness"} in d["mismatches"]
 
 
-def test_never_a_decision_key_and_never_fable():
+def test_never_a_decision_key():
     for a in (answers(quick=0.5, routine=0.36, plan=0.9), answers(quick=0.03, routine=0.06, multi=0.3, arch=0.61)):
         d = run(a)
-        assert "decision" not in d
-        assert all("Fable" not in line for line in d["lines"])
-
-
-def test_every_copy_string_fits_120_chars():
-    longest_display = max((m["display"] for m in CATALOG["models"]), key=len)
-    assert len(copytext.model_line("heavy", 0.99, longest_display, "medium")) <= copytext.MAX_LEN
-    assert len(copytext.plan_line(0.99)) <= copytext.MAX_LEN
+        assert set(d) == {"lines", "line_for", "suppress_reason", "suggestion", "mismatches"}
 ```
 
 - [ ] **Step 2: Create the modules as stubs**, so the tests fail on behaviour rather than on an import error (golden rule 4)
@@ -1988,7 +2142,7 @@ def test_every_copy_string_fits_120_chars():
 ```python
 """Cheapest model and effort that the fit table accepts (spec §4.13, D12, D13)."""
 import re
-NEVER_FAMILIES = {'fable', 'mythos'}
+NEVER = ('fable', 'mythos')
 _DATE = re.compile('-\\d{8}$')
 
 def canonical(model_id):
@@ -1996,6 +2150,10 @@ def canonical(model_id):
     raise NotImplementedError
 
 def _version_key(version: str):
+    raise NotImplementedError
+
+def never(model: dict) -> bool:
+    """True for any Fable or Mythos model, judged by family, id or display name, in any case."""
     raise NotImplementedError
 
 def eligible(model: dict) -> bool:
@@ -2054,7 +2212,7 @@ def decide(answers: dict, *, first_human: bool, plan_shown: bool, permission_mod
 
 Run: `.venv/bin/python -m pytest -q tests/test_adapter.py`
 
-Expected: `25 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `58 failed`; every failure is `NotImplementedError`. Record the output in the task report.
 
 - [ ] **Step 4: Implement**, replacing the stubs with exactly this code
 
@@ -2065,7 +2223,7 @@ Expected: `25 failed`; every failure is `NotImplementedError`. Record the output
 
 import re
 
-NEVER_FAMILIES = {"fable", "mythos"}  # the user's rule: never Fable (Mythos is its sibling line)
+NEVER = ("fable", "mythos")  # the user's rule: never Fable (Mythos is its sibling line)
 _DATE = re.compile(r"-\d{8}$")
 
 
@@ -2083,12 +2241,14 @@ def _version_key(version: str):
     return tuple(int(part) for part in version.split("."))
 
 
+def never(model: dict) -> bool:
+    """True for any Fable or Mythos model, judged by family, id or display name, in any case."""
+    text = " ".join(str(model.get(key) or "") for key in ("family", "id", "display")).lower()
+    return any(name in text for name in NEVER)
+
+
 def eligible(model: dict) -> bool:
-    return (
-        model.get("family") not in NEVER_FAMILIES
-        and bool(model.get("allowed"))
-        and bool(model.get("in_picker"))
-    )
+    return not never(model) and bool(model.get("allowed")) and bool(model.get("in_picker"))
 
 
 def _resolve(option: dict, models: list):
@@ -2116,7 +2276,8 @@ def select(cls: str, catalog: dict, fit: dict):
         candidates.append((model["price"]["input"], _version_key(model["version"]), model, effort))
     if not candidates:
         return None
-    candidates.sort(key=lambda c: (c[0], tuple(-v for v in c[1])))
+    candidates.sort(key=lambda c: c[1], reverse=True)  # newest first (5.5 > 5, 4.10 > 4.8)...
+    candidates.sort(key=lambda c: c[0])  # ...then cheapest; the sort is stable, so ties keep newest first
     _, _, model, effort = candidates[0]
     return {"model": model["id"], "display": model["display"], "effort": effort, "class": cls}
 
@@ -2223,11 +2384,11 @@ def decide(answers: dict, *, first_human: bool, plan_shown: bool, permission_mod
 
 Run: `.venv/bin/python -m pytest -q tests/test_adapter.py`
 
-Expected: `25 passed`.
+Expected: `58 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `107 passed, 1 deselected`.
+Expected: `140 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -2816,7 +2977,7 @@ Expected: `7 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `114 passed, 1 deselected`.
+Expected: `147 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -3695,7 +3856,7 @@ Expected: `23 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `137 passed, 1 deselected`.
+Expected: `170 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -4074,7 +4235,7 @@ Expected: `10 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `147 passed, 1 deselected`.
+Expected: `180 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -4158,7 +4319,7 @@ def test_real_service_answers_the_stage0_questions(configured, home):
   Add `laya-harness setup | status | stop | mode` to the gate profile with the results you observed.
 
 - [ ] **Step 3 (controller): Final gates.** Run `.venv/bin/python -m pytest -q` (expected
-  `147 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
+  `180 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
   Contract-drift check: `git status --porcelain -- docs/` must be empty. The controller commits every
   doc change on its own before code, so an uncommitted doc edit can only have come from a subagent.
 
