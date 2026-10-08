@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Draft for sign-off (documentation gate). Checks 1–5 done (Appendix C); mockup in §4.12 and `docs/mockups/`. |
+| Status | Draft for sign-off (documentation gate). Checks 1–6 done (Appendix C); mockup in §4.12 and `docs/mockups/`. |
 | Date | 2026-10-08 |
 | Scope | The whole system at roadmap level. Stage 0 in implementable detail. |
 | Review | Stage 0 was put through a six-lens design review before this draft (Appendix B). |
@@ -73,9 +73,10 @@ Each stage updates this document before any of its code is written.
 
 Three hooks run the same client.
 
-- **SessionStart** creates the session file and makes sure the service is running. It never
-  waits for the model to load (decision D7) and prints nothing. In the desktop app it does not
-  receive the model (Appendix C).
+- **SessionStart** creates the session file and makes sure the service is running. On a new
+  session (`startup`) it waits up to 4 s while the service is starting, so the first prompt
+  usually meets a ready model (decision D7, §4.3). It prints nothing. In the desktop app it does
+  not receive the model (Appendix C).
 - **UserPromptSubmit** sends the prompt to the service, applies the Claude Code adapter rules,
   prints at most two lines for the user, and logs one row.
 - **PostModelSwitch** records the new model when the user changes it mid-session, and prints
@@ -121,6 +122,14 @@ The service runs laya-mlx, answers three questions per prompt, and exits after 1
   when the hook times out; the docs do not say this. Acceptance (§8, step 3a) confirms that a
   service spawned this way reaches `ready` after the hook exits and survives the session
   closing.
+- **Warm-up wait (SessionStart, `startup` only; D7).** After making sure the service is
+  running, the client polls `/v1/health` until it reports `ready`, for at most 4 s in total,
+  with each poll's timeout capped at the time left. It stops waiting at once on `not_ready`, on
+  any reply that is not from laya-harness, on an error reply, when the first poll times out, or
+  when mode is `off`. It keeps waiting only while the state is `loading`, or while the port is
+  refused just after this hook spawned the service. Check 6 measured 2.1–2.8 s from spawn to
+  ready, so the first reply after the service has been idle is usually about that much slower.
+  The other SessionStart sources (`resume`, `clear`, `compact`, `fork`) never wait.
 
 ### 4.4 Service
 
@@ -136,9 +145,13 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
    Until the model is ready, `POST /v1/profile` answers 503 `{"state": "loading"}`.
 3. Set `HF_HUB_OFFLINE=1`, import laya_mlx, and load the checkpoint **from the absolute local
    directory in `config.json`, never by repo id.**
-   - Set `agent.cfg["max_len"] = 512`.
+   - Load with `batch_size=1` and `pad_to_multiple=128`, then set `agent.cfg["max_len"] = 512`.
+     Check 6 showed why: batching the three questions raised MLX peak memory to 1.37 GiB,
+     against 1.17 GiB one at a time at the same speed; and without padding, the first prompt of
+     each new length took up to 8.5 s.
    - Write the effective calibration temperatures to `service.log` once.
-   - Run one warm-up `predict()`. The state is then `ready`.
+   - Warm every padded length (128, 256, 384 and 512 tokens) with throwaway prompts of
+     increasing size, about 1.7 s in total. The state is then `ready`.
 4. **If any of step 3 fails** (missing or corrupt files, a tokenizer error, a Metal error),
    the state becomes `not_ready` with the reason, and the service **stays bound** until its
    idle timeout. A broken model therefore never causes a cycle of restarts, each loading about
@@ -165,19 +178,22 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
 ### 4.5 Checkpoint and setup
 
 - **Checkpoint:** `aac6fef/laya-mlx`, the general English model (ModernBERT-large, 421M,
-  512-token context). It is pinned by repo id plus full commit SHA in the committed file
-  `laya_harness/checkpoint.json`. The SHA is copied from laya-mlx's
-  `benchmarks/results/hub-publication.json` during implementation, so any change of checkpoint
-  is a reviewed diff.
+  512-token context). It is pinned in the committed file `laya_harness/checkpoint.json`:
+  revision `047678560251f28113ee8f5df4be82102c7bf336` and weights sha256
+  `b9c07bf14be2fa5c78a9193a3e6d840ac80e89e62fc40f425834c3d8a6eaa3de`, both taken from
+  laya-mlx's `benchmarks/results/hub-publication.json`. Any change of checkpoint is a reviewed
+  diff.
 - It was not chosen for a benchmark score. The typed-decisions checkpoint's 0.766 was measured
   on its own four synthetic workflows and does not carry over to coding prompts. **Every
   stage-0 checkpoint is expected to be near chance on these questions and uncalibrated for
   them.** Stage 2 compares checkpoints.
 - **`laya-harness setup`** is run by the user. It is the only thing that touches the network,
-  and the user approves the roughly 0.9 GB download first. In order, it:
+  and the user approves the 807 MB download first. In order, it:
   1. creates `~/.laya-harness` with mode 0700;
-  2. downloads the pinned commit, only the files laya-mlx needs, into
-     `~/.laya-harness/models/laya-mlx@<sha>`;
+  2. downloads the pinned commit, only the files laya-mlx needs (`model.safetensors`,
+     `rl_agent_config.json`, `encoder/config.json`, `tokenizer/*`, `mlx_config.json`), into
+     `~/.laya-harness/models/laya-mlx@<sha>`, and checks the weights' sha256. A matching copy
+     already in place is reused; check 6 left one there;
   3. writes `config.json`: interpreter path, model directory, repo and SHA, port `47913`, and
      mode `show`;
   4. runs the exact registered hook argv once with a sample input;
@@ -233,7 +249,7 @@ records its sha256.
 
 | Field | Type | Question | Shown when |
 |---|---|---|---|
-| `difficulty` | choice | *quick question or tiny edit* / *routine single-area change* / *multi-file feature or debugging* / *architecture, migration or hard reasoning* | tier probability ≥ 0.6 (§4.9) |
+| `difficulty` | choice | *quick question or tiny edit* / *routine single-area change* / *multi-file feature or debugging* / *architecture, migration or hard reasoning* | tier probability ≥ 0.8 (§4.9) |
 | `plan_first` | noul | Should this request be planned before any file is edited? | noul ≥ 0.85 plus the MODE rules |
 | `parallel` | noul | Does it contain independent subtasks that could run in parallel? | never in stage 0 (logged only) |
 
@@ -247,7 +263,9 @@ it was compared with, the mismatch type, and the channel it will use from stage 
 **MODEL + REASONING (from `difficulty`)**
 
 - **Tier:** light = P(quick) + P(routine); heavy = P(multi-file) + P(architecture). The tier
-  with the larger sum is chosen. The line is eligible only if that sum is ≥ 0.6.
+  with the larger sum is chosen. The line is eligible only if that sum is ≥ 0.8 (D11). Check 6: on the first prompts of
+  100 past sessions it would fire 81% of the time at 0.6 and 13% at 0.8, and the rule is at
+  most about one session in five.
 - **Suggestion:** light → Sonnet 5.5; heavy → Opus 5.5. The effort comes from the more likely
   class within the tier: quick → low, routine → medium, multi-file → high,
   architecture → xhigh.
@@ -337,8 +355,8 @@ now prevents.
 
 | State | Exact text |
 |---|---|
-| (a) first human prompt, light tier ≥ 0.6 | `laya · light task (p=0.78) → Sonnet 5.5 at low effort fits this task` |
-| (a) first human prompt, heavy tier ≥ 0.6 | `laya · heavy task (p=0.71) → Opus 5.5 at xhigh effort fits this task` |
+| (a) first human prompt, light tier ≥ 0.8 | `laya · light task (p=0.86) → Sonnet 5.5 at low effort fits this task` |
+| (a) first human prompt, heavy tier ≥ 0.8 | `laya · heavy task (p=0.91) → Opus 5.5 at xhigh effort fits this task` |
 | (d) plan first | `laya · reads like a multi-step change (p=0.88) → Plan mode (mode menu, then 4), or tell Claude to plan first` |
 | (e) both on the first human prompt | (a) on the first line, (d) on the second |
 | (g) nothing shown | the service is starting, loading, not ready, slow or erroring; the prompt is not human; a score is below its threshold; not the first human prompt (model line); plan already shown, already in Plan mode, or the prompt is too short; mode is `log-only` or `off` |
@@ -360,13 +378,13 @@ heavy tier.
 | Prompt longer than 512 tokens | Laya keeps the beginning; the row is marked `truncated`. |
 | Stale service after a code or config change | `laya-harness stop`. Every row records the versions that produced it. |
 
-**Explicit hook timeouts:** SessionStart 5 s, UserPromptSubmit 3 s, PostModelSwitch 3 s. The service listens on 127.0.0.1 only. `~/.laya-harness` is mode 0700.
+**Explicit hook timeouts:** SessionStart 8 s (it may wait 4 s, §4.3), UserPromptSubmit 3 s, PostModelSwitch 3 s. The service listens on 127.0.0.1 only. `~/.laya-harness` is mode 0700.
 
 ## 6. Testing
 
 - **Unit tests (fakes):**
   - adapter rules: model line only when `prompt_count` was 0; never Fable; no `decision` key
-    ever; the tier sums and the 0.6 gate; MODE eligibility; once per session; no plan line in
+    ever; the tier sums and the 0.8 gate; MODE eligibility; once per session; no plan line in
     Plan mode; a noul of 0.30 with `confidence` 0.70 shows nothing; the number shown is the
     gated value formatted to two decimals (including 0.7802 → `0.78` and a value just under a
     threshold, such as 0.8496 for 0.85, being suppressed even though it would display as `0.85`);
@@ -386,6 +404,10 @@ heavy tier.
   - Spawn test: with the client's stdout and stderr as pipes, it starts a long-lived fake
     service that sleeps and prints. Both pipes close within about 0.2 s of the client exiting,
     and the child is still alive.
+  - SessionStart wait: waits while the service reports `loading` and returns once it is
+    `ready`; gives up after 4 s; returns at once on `not_ready`, a foreign listener, an error
+    reply, a first-poll timeout and mode `off`; never waits for `resume`, `clear`, `compact`
+    or `fork`.
 - **Service (fake model, no weights):** endpoints; the Host, Origin and Content-Type checks;
   N services started at once with a fake 3 s load, giving exactly one load while the others
   exit 0 within about 0.5 s without importing laya_mlx; idle exit on a short timer, never
@@ -396,7 +418,7 @@ heavy tier.
 
 ## 7. Check first (throwaway, before writing anything to keep)
 
-**Checks 1–5 were run on 2026-10-08; the results are in Appendix C. Check 6 is still to run.**
+**All six checks were run on 2026-10-08; the results are in Appendix C.**
 
 Checks 1–5 use a throwaway hook in this project's own `.claude/settings.local.json`, which
 records the raw stdin, `$CLAUDE_EFFORT` and timestamps to a scratch file and is removed
@@ -450,15 +472,17 @@ acceptance):
    running after that session is closed. (b) Model directory empty: several prompts show nothing, and
    nothing restarts in a loop. (c) A fake listener that never replies: the prompt goes through
    within about 1.6 s with nothing shown.
-4. **Cold first prompts.** Record the share of sessions whose first human prompt got no
-   profile. This is information for decision D7, not a gate.
+4. **Cold start.** In a new session with the service stopped, SessionStart waits and the
+   first prompt gets a profile, with the first reply delayed by at most about 4 s. Record the
+   share of sessions whose first human prompt still got no profile; that is information, not a
+   gate.
 5. **Off switch.** With `laya-harness mode off`, no row is written and nothing is started.
 
 ## 9. Build order and process gates
 
 1. Sign-off on this document and the mockup (§4.12 plus check 1's screenshots).
-2. With approval for the package download (about 300 MB installed), create the project venv
-   (Python 3.11, laya-mlx 0.3.0 pinned, pytest), add a trivial test, and run it.
+2. Add pytest to the project venv, which was created for check 6 (Python 3.11.17,
+   laya-mlx 0.3.0, MLX 0.32.3), add a trivial test, and run it.
 3. Draft the two-agent gate profile from commands that have actually been run: pytest on fakes
    for implementers; controller-only tiers for the real model (check 6), real-session acceptance
    and the install diff; visual verification against §4.12. The user signs it off before the
@@ -470,7 +494,7 @@ acceptance):
 
 - During acceptance, the hooks live in this project's `.claude/settings.local.json`.
 - At the end of stage 0, three exec-form entries go into the user-level
-  `~/.claude/settings.json` so laya runs in every project: SessionStart (5 s), UserPromptSubmit
+  `~/.claude/settings.json` so laya runs in every project: SessionStart (8 s), UserPromptSubmit
   (3 s) and PostModelSwitch (3 s). `setup` prints the snippet and has already run the exact
   command. **The diff is shown to the user and applied only with approval.**
 - `laya-harness mode off` turns laya off without touching settings. Removing the entries
@@ -488,7 +512,7 @@ acceptance):
 | Stage 3 | Refit per-field thresholds and calibration from outcomes and labels. |
 | Stage 4 | MODEL and REASONING as separate suggestions compared with the current setting (known from the second prompt on): effort on later prompts, model after clear, compact or resume; harness notes for MODE and PARALLELISM; prompt-stopping never fires on non-human turns; calibrated wording for scores. |
 | Stage 5 | CONTEXT advice using SessionStart's `prompt_cache_likely_expired`, `seconds_since_last_response` and `context_tokens`, and PostModelSwitch's `prompt_cache_warm` and `estimated_cache_write_usd` (all observed in check 4). |
-| After D7 | A bounded SessionStart wait, a longer idle timeout, or a launchd agent, chosen from check 6 and acceptance step 4. |
+| Stage 2 | The idle-timeout length, or a launchd agent, chosen from the cold-start share recorded in acceptance step 4 and from memory pressure (F14). |
 
 ## Appendix A — Decisions
 
@@ -500,10 +524,11 @@ acceptance):
 | D4 | 2026-10-07 | Training on the user's own history is part of the plan, not optional. |
 | D5 | 2026-10-07 | The project lives at `~/Code Playground/laya-harness`, package `laya_harness`, in its own venv. |
 | D6 | 2026-10-06 | When stopping prompts is switched on (stage 4), user-actionable mismatches stop the first prompt with an explanation. |
-| D7 | 2026-10-08 | No SessionStart wait in stage 0. Measure cold first prompts, then decide. |
+| D7 | 2026-10-08 | At first, no SessionStart wait until check 6 measured the cold start. Revised after check 6 (2.1–2.8 s to ready): a new session waits up to 4 s while the service is starting. |
 | D8 | 2026-10-08 | Plan-first is shown in stage 0; parallel is logged only. |
 | D9 | 2026-10-08 | Start with the general English checkpoint, pinned by SHA. |
 | D10 | 2026-10-08 | The model/effort line is suggested on the first human prompt without comparison, because hooks cannot see the model or effort then (Appendix C). |
+| D11 | 2026-10-08 | Model-line threshold raised from 0.6 to 0.8 under the spec's one-session-in-five rule (check 6). |
 
 ## Appendix B — Design review (2026-10-07 to 2026-10-08)
 
@@ -519,7 +544,7 @@ was then trimmed to keep stage 0 thin.
 |---|---|---|
 | F1 | Spawning from a hook can leak pipes or stdout into Claude's context | §4.3 spawn contract; explicit hook timeouts; spawn test |
 | F2 | Launch failures can exit 2 and block every prompt | §4.2 exec form, `-I`, catch everything, exit 0 |
-| F3 | SessionStart cannot warm the model before the first prompt | D7: no wait; measured in check 6 and acceptance step 4 |
+| F3 | SessionStart cannot warm the model before the first prompt | D7: a bounded 4 s wait on new sessions, sized from check 6's measured cold start |
 | F4 | Loading by repo id contacts the network on every start | §4.4 offline local load; §4.5 pinned SHA, setup only |
 | F5 | A TCP port alone allows concurrent ~1 GB loads | §4.4 bind before import; spawn only on connection refused; Host/Origin checks |
 | F6 | The prompt hook fires on machine turns | §4.7 prompt source |
@@ -540,7 +565,7 @@ was then trimmed to keep stage 0 thin.
 | F21 | Acceptance not measurable | §8 |
 | F22 | Copy only for two states | §4.12 copy deck |
 | C1 | Threading and watchdog | One lock around MLX; watchdog deferred |
-| C2 | SessionStart waiting 8 s when broken | Moot under D7 |
+| C2 | SessionStart waiting 8 s when broken | The §4.3 wait stops at once in every broken state |
 | C3 | Load failures cause a restart loop | §4.4 step 4: `not_ready`, stays bound |
 | C4 | Code changes not picked up | `laya-harness stop`; versions per row |
 | C5 | UI steps and screenshots undefined | §7 and §8: UI steps done by the user |
@@ -558,3 +583,4 @@ are kept git-ignored in `.claude/spike/` until the test fixtures are made from t
 | 3. Effort | **Not available to the prompt hook.** `$CLAUDE_EFFORT` is unset and the input has no `effort`. Each transcript reply row carries `effort` and `perTurnEffort`. |
 | 4. Payloads | UserPromptSubmit input: `session_id`, `prompt_id`, `prompt`, `permission_mode`, `transcript_path`, `cwd`, `scratchpad_dir`, `session_title`, `hook_event_name`. The hook's `prompt_id` equals the transcript's `promptId`. SessionStart runs to completion before the first prompt is processed: a 3 s delay held it back. Machine turns fire UserPromptSubmit with prompts starting `<task-notification>`, `<agent-message from=` and `<cross-session-message from=`; no `agent_id` was ever present, and one task notification fired no hook. The transcript records origin per turn (`origin.kind`: human, task-notification, peer). SessionStart also carries `prompt_cache_likely_expired`, `seconds_since_last_response`, `context_tokens` and `estimated_cache_write_usd`. PostModelSwitch also carries `prompt_cache_warm`, `cache_ttl`, `pricing` and `requested_model`. |
 | 5. Exec form, path with a space | **Pass.** The hook ran with `command` set to an absolute path inside "Code Playground". |
+| 6. Real model on the M2 | **Pass, with three settings changes** (§4.4, §4.9). Run with the pinned checkpoint, offline, with the desktop app open and 37% of memory free. All three questions answered; choice sums 0.9999–1.0001; nouls in range; an 888-token prompt marked truncated (430 tokens dropped). Warm: 0.13 s typical, 0.43–0.47 s at 512 tokens. Without padding, the first prompt of each new length took up to 8.5 s (4 of 100 over 1.5 s); padded to multiples of 128 and warmed, the worst was 0.53 s with none over 1.5 s. MLX peak memory 1.37 GiB batched, 1.17 GiB one question at a time; whole-process RSS 0.6–0.9 GiB. Cold start with the final settings: 2.1–2.8 s from spawn to ready (imports 0.3–0.5 s, load 0.1–0.5 s, warm-up 1.7 s); the weights were in the file cache, so a start from a cold disk may be slower. Fire rates on the first prompts of 100 past sessions: model line 81% at 0.6, 43% at 0.7, 13% at 0.8; plan line 11% at 0.85; parallel 8% at 0.85. Fourteen obvious prompts: light/heavy tier right 14/14, exact class 9/14 (multi-file never chosen). |
