@@ -25,7 +25,7 @@ before any task). **Mockup:** spec §4.12 plus `docs/mockups/stage0-check1-*.png
 
 **How this plan was verified (plan preflight):** every code block below was executed in a
 throwaway copy of the repo at commit `1606ae9` (every later commit changes only `docs/` and `README.md`) before being written here, and is copied from those
-files, not retyped. In that copy the full suite passed repeatedly (`216 passed, 1 deselected` with every task, after the review rounds of Tasks 1–5), the
+files, not retyped. In that copy the full suite passed repeatedly (`239 passed, 1 deselected` with every task, after the review rounds of Tasks 1–6), the
 controller-only gate passed (`.venv/bin/python -m pytest -q -m real_model` → `1 passed`, cold start
 to ready plus a warm call in 3.6 s), and each task's tests were run against the stubs in plan order
 with later tasks absent: every test failed, none passed against a stub (the RED counts below).
@@ -1052,7 +1052,7 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
   `on_session_start(state, source) -> dict`, `on_model_switch(state, to_model, now) -> dict`,
   `switch_pending(state, reply) -> bool`, `on_human_prompt(state, now, reply) -> dict`.
 
-> Revised after review round 1: subagents are recognised by `agent_id` or a `/subagents/` path, never `agent_type` alone; the tail reader skips non-object rows and refuses non-string paths; a mistyped session file falls back to the defaults; a reply's effort is taken as carried; and 33 tests pin the switch edge cases, the tail reader, the session-start resets and a valid state's round trip (review round 2). `tests/fixtures/payloads.json` holds the payload shapes captured in check 4, with identifiers and prompt text replaced.
+> Revised after review round 1: subagents are recognised by `agent_id` or a `/subagents/` path, never `agent_type` alone; the tail reader skips non-object rows and refuses non-string paths; a mistyped session file falls back to the defaults; a reply's effort is taken as carried; and 33 tests pin the switch edge cases, the tail reader, the session-start resets and a valid state's round trip (review round 2). From the Task 6 review: the tail reader opens regular files only and reads at most TAIL_BYTES, so a FIFO or a device in `transcript_path` can never block the hook (one more test). `tests/fixtures/payloads.json` holds the payload shapes captured in check 4, with identifiers and prompt text replaced.
 
 - [ ] **Step 1: Write the supporting files**
 
@@ -1154,6 +1154,7 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
 import json
 import os
 import stat
+import threading
 from pathlib import Path
 
 import pytest
@@ -1222,6 +1223,21 @@ def test_last_assistant_returns_newest_main_thread_reply(tmp_path):
     )
     reply = transcript.last_assistant(str(t))
     assert reply == {"model": "claude-opus-4-7", "effort": "medium", "ts": 1791433691.0}
+
+
+def test_last_assistant_never_blocks_on_a_fifo(tmp_path):
+    """Spec §4.6: only a regular file is read. Opening a FIFO would block the hook until killed."""
+    fifo = tmp_path / "transcript.fifo"
+    os.mkfifo(fifo)
+    results = []
+    worker = threading.Thread(target=lambda: results.append(transcript.last_assistant(str(fifo))), daemon=True)
+    worker.start()
+    worker.join(2)
+    blocked = worker.is_alive()
+    if blocked:  # release a reader stuck in open() so the test can finish
+        os.close(os.open(fifo, os.O_WRONLY | os.O_NONBLOCK))
+        worker.join(2)
+    assert not blocked and results == [None]
 
 
 def test_last_assistant_missing_empty_or_not_a_string(tmp_path):
@@ -1449,6 +1465,7 @@ def classify(payload: dict) -> str:
 """The last assistant reply in a Claude Code transcript (spec §4.6). Reads only the tail."""
 import json
 import os
+import stat
 from datetime import datetime
 TAIL_BYTES = 256 * 1024
 
@@ -1460,7 +1477,7 @@ def last_assistant(path):
 
     Only the last TAIL_BYTES are read. A cut-off first line, lines that are not JSON objects,
     sidechain rows and synthetic models (names starting with "<") are skipped. A path that is not
-    a string, or a missing or unreadable file, gives None. A lagging transcript still returns its
+    a string or not a regular file, or a missing or unreadable file, gives None. A lagging transcript still returns its
     newest row, which may be stale; session_state's pending-switch rule handles that.
     """
     raise NotImplementedError
@@ -1516,7 +1533,7 @@ def on_human_prompt(state: dict, now: float, reply) -> dict:
 
 Run: `.venv/bin/python -m pytest -q tests/test_source_session.py`
 
-Expected: `48 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `49 failed`; every failure is `NotImplementedError`. Record the output in the task report.
 
 - [ ] **Step 5: Implement**, replacing the stubs with exactly this code
 
@@ -1556,6 +1573,7 @@ def classify(payload: dict) -> str:
 
 import json
 import os
+import stat
 from datetime import datetime
 
 TAIL_BYTES = 256 * 1024
@@ -1575,17 +1593,19 @@ def last_assistant(path):
 
     Only the last TAIL_BYTES are read. A cut-off first line, lines that are not JSON objects,
     sidechain rows and synthetic models (names starting with "<") are skipped. A path that is not
-    a string, or a missing or unreadable file, gives None. A lagging transcript still returns its
+    a string or not a regular file, or a missing or unreadable file, gives None. A lagging transcript still returns its
     newest row, which may be stale; session_state's pending-switch rule handles that.
     """
     if not isinstance(path, str) or not path:
         return None
     try:
+        if not stat.S_ISREG(os.stat(path).st_mode):  # a device or a FIFO would block the hook
+            return None
         with open(path, "rb") as f:
             size = os.fstat(f.fileno()).st_size
             start = max(0, size - TAIL_BYTES)
             f.seek(start)
-            data = f.read()
+            data = f.read(TAIL_BYTES)
     except OSError:
         return None
     lines = data.split(b"\n")
@@ -1736,11 +1756,11 @@ def on_human_prompt(state: dict, now: float, reply) -> dict:
 
 Run: `.venv/bin/python -m pytest -q tests/test_source_session.py`
 
-Expected: `48 passed`.
+Expected: `49 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `82 passed, 1 deselected`.
+Expected: `83 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -2406,7 +2426,7 @@ Expected: `63 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `145 passed, 1 deselected`.
+Expected: `146 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -3484,7 +3504,7 @@ Expected: `38 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `183 passed, 1 deselected`.
+Expected: `184 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -3515,14 +3535,18 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
 - `spawn.service_argv(interpreter) -> list`, `spawn.spawn_service(cfg) -> None`.
 - `service_client.health(port, timeout) -> (outcome, body)`,
   `service_client.profile(port, prompt, deadline) -> (outcome, body)`; outcomes `ok`, `refused`,
-  `loading`, `not_ready`, `timeout`, `foreign`, `error`.
+  `loading`, `not_ready`, `timeout`, `foreign`, `error`. Each call has a wall-clock limit (the
+  request runs in a daemon thread), so a trickling listener cannot stretch it.
 - `decision_log`: `SCHEMA_VERSION = 1`, `iso(ts) -> str`, `append(row) -> None`, `problem(message) -> None`.
 - `client.run(harness, event, raw: bytes, started: float) -> str | None`; `PROFILE_DEADLINE = 1.5`,
-  `WAIT_BUDGET = 4.0`.
+  `WAIT_BUDGET = 4.0`, `HEALTH_TIMEOUT = 0.5`; `_wait_until_ready(port, spawned)` (the tests drive
+  it with a fake clock). A UserPromptSubmit that raises still appends a row with status `error`;
+  the row is written before the session's shown flags are saved; a decided row records the
+  service's `question_set` and `versions.service_laya_harness`.
 - `__main__.main(argv=None) -> int`; `python -I -m laya_harness hook claude-code <Event>` never
   raises and always exits 0.
 
-> Contract files (hook contract §4.2, decision log §4.10): route the code review to `opus` per the gate profile. `__main__.py` here ends with a usage message for non-hook arguments; Task 7 replaces those three lines with the commands dispatch.
+> Revised after review round 1 (spec 516719a): wall-clock deadlines; an `error` row on any client failure; rows escape non-ASCII and are written before the shown flags are saved; rows record the service's question set and version; `service.log` is 0600; timeouts and foreign listeners get a `client.log` line; stdout is redirected at the descriptor level during a hook; and 22 more tests pin the exec-form argv, spawn only on refused, the detached session and its log, the wait's stop conditions and poll cap, file modes and skipped-row reasons. Contract files (hook contract §4.2, decision log §4.10): route the code review to `opus` per the gate profile. `__main__.py` here ends with a usage message for non-hook arguments; Task 7 replaces those three lines with the commands dispatch.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3535,16 +3559,18 @@ import json
 import os
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import threading
 import time
+import types
 from pathlib import Path
 
 import pytest
 
 from conftest import write_config
-from laya_harness import hookargv
+from laya_harness import client, hookargv
 from procs import env_for, request, start_service, stop, wait_health
 
 PAYLOADS = json.loads((Path(__file__).parent / "fixtures" / "payloads.json").read_text())
@@ -3623,8 +3649,39 @@ class Listener(threading.Thread):
             conn.close()
 
 
+class Trickle(Listener):
+    """A foreign listener that answers one byte every 0.2 s: each read is quick, the whole is not."""
+
+    def run(self):
+        while True:
+            try:
+                conn, _ = self.sock.accept()
+            except OSError:
+                return
+            self.held.append(conn)
+            threading.Thread(target=self._drip, args=(conn,), daemon=True).start()
+
+    def _drip(self, conn):
+        try:
+            conn.recv(65536)
+            for byte in b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}":
+                conn.sendall(bytes([byte]))
+                time.sleep(0.2)
+        except OSError:
+            pass
+
+
 def human(prompt="fix the typo in README", session="sess-1"):
     return dict(PAYLOADS["user_prompt_human"], prompt=prompt, session_id=session, transcript_path="")
+
+
+def served_reply(**changes):
+    reply = {"answers": ABOVE_GATE, "usage": {"truncated": False},
+             "checkpoint": {"repo": "aac6fef/laya-mlx", "revision": "r", "model_mode": "fake"},
+             "question_set": {"id": "profile_v0", "sha256": "0" * 64},
+             "versions": {"laya_harness": "9.9.9", "laya_mlx": "0.3.0"}}
+    reply.update(changes)
+    return reply
 
 
 # --- fail-open --------------------------------------------------------------------------
@@ -3638,6 +3695,28 @@ def test_bad_event_and_harness_print_nothing(configured, home):
 def test_garbage_stdin_prints_nothing(configured, home):
     assert run_hook(home, "UserPromptSubmit", b"\x00not json").stdout == b""
     assert "hook failed" in (home / "client.log").read_text()
+
+
+@pytest.mark.parametrize("payload", [b"\x00not json", b"[1, 2]", b"", json.dumps(dict(PAYLOADS["user_prompt_human"],
+                                     session_id=5, transcript_path="")).encode()])
+def test_client_error_still_logs_an_error_row(configured, home, payload):
+    assert run_hook(home, "UserPromptSubmit", payload).stdout == b""
+    assert [r["status"] for r in rows(home)] == ["error"]  # spec §5: one row, status error
+    assert "hook failed" in (home / "client.log").read_text()
+
+
+def test_hook_argv_is_the_registered_exec_form():
+    assert hookargv.hook_argv("/x/py", "claude-code", "UserPromptSubmit") == [
+        "/x/py", "-I", "-m", "laya_harness", "hook", "claude-code", "UserPromptSubmit"]
+
+
+def test_state_files_are_private(configured, home, cleanup):
+    run_hook(home, "UserPromptSubmit", human())  # nothing bound: spawns, so service.log exists too
+    wait_health(configured["port"])
+    run_hook(home, "NoSuchEvent", human())
+    assert stat.S_IMODE(home.stat().st_mode) == 0o700
+    for name in ("decisions.jsonl", "client.log", "service.log"):
+        assert stat.S_IMODE((home / name).stat().st_mode) == 0o600, name
 
 
 def test_mode_off_does_nothing(configured, home):
@@ -3678,6 +3757,45 @@ def test_first_prompt_shows_both_lines_and_logs_the_row(configured, home, cleanu
     assert rows(home)[-1]["suppress_reason"] == {"model": "not_first_prompt", "plan": "already_shown"}
 
 
+def test_machine_turns_record_source_and_reason(configured, home):
+    for name in ("user_prompt_task_notification", "user_prompt_agent_message", "user_prompt_cross_session"):
+        run_hook(home, "UserPromptSubmit", dict(PAYLOADS[name], transcript_path=""))
+    assert [r["source"] for r in rows(home)] == ["task-notification", "agent", "peer"]
+    assert all(r["suppress_reason"] == {"model": "not_human", "plan": "not_human"} for r in rows(home))
+
+
+def test_row_records_what_the_service_ran(configured, home, monkeypatch):
+    reply = served_reply()
+    monkeypatch.setattr(client.service_client, "profile", lambda port, prompt, deadline: ("ok", reply))
+    out = client.run("claude-code", "UserPromptSubmit", json.dumps(human()).encode(), time.monotonic())
+    row = rows(home)[-1]
+    assert out and row["status"] == "decided"
+    assert row["question_set"] == reply["question_set"]  # what produced the answers, not the client's file
+    assert row["versions"]["service_laya_harness"] == "9.9.9" and row["versions"]["laya_harness"] == "0.0.0"
+    assert "run laya-harness stop" in (home / "client.log").read_text()
+
+
+def test_a_failed_row_write_never_marks_a_line_as_shown(configured, home, monkeypatch):
+    monkeypatch.setattr(client.service_client, "profile", lambda port, prompt, deadline: ("ok", served_reply()))
+
+    def full_disk(row):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(client.decision_log, "append", full_disk)
+    with pytest.raises(OSError):
+        client.run("claude-code", "UserPromptSubmit", json.dumps(human()).encode(), time.monotonic())
+    state = json.loads((home / "sessions" / "sess-1.json").read_text())
+    assert state["model_line_shown"] is False and state["plan_shown"] is False
+
+
+def test_lone_surrogate_prompt_still_shows_and_logs(configured, home, cleanup):
+    write_config(home, fake_answers=ABOVE_GATE)
+    cleanup.append(start_service(home))
+    wait_health(configured["port"])
+    result = run_hook(home, "UserPromptSubmit", human("redesign the auth layer \ud83d and migrate JWT handling"))
+    assert result.stdout != b"" and rows(home)[-1]["status"] == "decided"
+
+
 def test_machine_turns_are_skipped_without_calling_the_service(configured, home):
     for name in ("user_prompt_task_notification", "user_prompt_agent_message", "user_prompt_cross_session"):
         payload = dict(PAYLOADS[name], transcript_path="")
@@ -3700,8 +3818,9 @@ def test_slow_reply_times_out_quickly(configured, home, cleanup):
     cleanup.append(start_service(home))
     wait_health(configured["port"])
     result = run_hook(home, "UserPromptSubmit", human())
-    assert result.stdout == b"" and result.elapsed < 2.5
+    assert result.stdout == b"" and result.elapsed < 2.0
     assert rows(home)[-1]["status"] == "timeout"
+    assert not (home / "service.log").exists()  # a timeout never spawns (spec §4.3)
 
 
 @pytest.mark.parametrize("mode, status", [("junk", "error"), ("hang", "timeout")])
@@ -3714,6 +3833,30 @@ def test_foreign_listener_is_left_alone(configured, home, mode, status):
         listener.close()
     assert result.stdout == b"" and result.elapsed < 2.5
     assert rows(home)[-1]["status"] == status and loads(home) == 0
+    assert not (home / "service.log").exists()  # spawn_service opens it: nothing was spawned
+    assert f"port {configured['port']}" in (home / "client.log").read_text()  # spec §5: one line
+
+
+@pytest.mark.parametrize("event, limit", [("UserPromptSubmit", 2.0), ("SessionStart", 1.5)])
+def test_trickling_listener_cannot_stretch_the_deadline(configured, home, event, limit):
+    listener = Trickle(configured["port"], "trickle")
+    listener.start()
+    try:
+        result = run_hook(home, event, human() if event == "UserPromptSubmit" else start_payload(), timeout=30)
+    finally:
+        listener.close()
+    assert result.elapsed < limit and not (home / "service.log").exists()
+
+
+def test_spawned_service_is_detached_and_logs_stderr(configured, home, cleanup):
+    write_config(home, fake_load_error="broken")  # the service prints "load failed" to stderr
+    run_hook(home, "UserPromptSubmit", human())
+    body = wait_health(configured["port"], want=("not_ready",))
+    assert os.getsid(body["pid"]) == body["pid"]  # its own session: the hook runner cannot reap it
+    deadline = time.monotonic() + 2
+    while "load failed" not in (home / "service.log").read_text() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert "load failed" in (home / "service.log").read_text()
 
 
 def test_spawn_does_not_hold_the_hook_pipes(configured, home, cleanup):
@@ -3767,12 +3910,63 @@ def test_startup_returns_at_once_on_foreign_listener(configured, home, mode):
     finally:
         listener.close()
     assert result.elapsed < 1.5 and loads(home) == 0
+    assert not (home / "service.log").exists()
+    assert "no service started" in (home / "client.log").read_text()
 
 
 @pytest.mark.parametrize("source", ["resume", "clear", "compact", "fork"])
-def test_other_sources_never_wait(configured, home, cleanup, source):
+def test_other_sources_start_the_service_without_waiting(configured, home, cleanup, source):
     write_config(home, fake_load_seconds=8)
     assert run_hook(home, "SessionStart", start_payload(source)).elapsed < 1.0
+    wait_health(configured["port"], want=("loading",))  # started; this also lets cleanup stop it
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+@pytest.mark.parametrize("replies, spawned, polls", [
+    ([("ok", {"state": "ready"})], False, 1),
+    ([("ok", {"state": "not_ready"})], False, 1),
+    ([("foreign", None)], False, 1),
+    ([("error", None)], False, 1),
+    ([("timeout", None)], True, 1),
+    ([("refused", None)], False, 1),
+    ([("refused", None)] * 3 + [("ok", {"state": "ready"})], True, 4),
+    ([("ok", {"state": "loading"}), ("timeout", None), ("ok", {"state": "ready"})], False, 3),
+])
+def test_wait_stop_conditions(monkeypatch, replies, spawned, polls):
+    clock, seen = FakeClock(), []
+    monkeypatch.setattr(client, "time", types.SimpleNamespace(monotonic=clock.monotonic, sleep=clock.sleep))
+
+    def health(port, timeout):
+        seen.append(timeout)
+        return replies[min(len(seen), len(replies)) - 1]
+
+    monkeypatch.setattr(client.service_client, "health", health)
+    client._wait_until_ready(1, spawned)
+    assert len(seen) == polls
+
+
+def test_wait_caps_each_poll_at_the_time_left(monkeypatch):
+    clock, seen = FakeClock(), []
+    monkeypatch.setattr(client, "time", types.SimpleNamespace(monotonic=clock.monotonic, sleep=clock.sleep))
+
+    def health(port, timeout):
+        seen.append(timeout)
+        clock.now += timeout
+        return "ok", {"state": "loading"}
+
+    monkeypatch.setattr(client.service_client, "health", health)
+    client._wait_until_ready(1, spawned=True)
+    assert clock.now <= client.WAIT_BUDGET + 1e-6 and seen[-1] < client.HEALTH_TIMEOUT
 
 
 def test_startup_in_mode_off_starts_nothing(configured, home):
@@ -3821,6 +4015,7 @@ def settings_snippet(interpreter: str) -> dict:
 ```python
 """Start the service fully detached (spec §4.3): no inherited stdin or stdout, stderr to
 service.log, its own session. The caller never waits for it."""
+import os
 import subprocess
 from . import config, paths
 
@@ -3841,9 +4036,15 @@ Outcomes: "ok", "refused" (nothing bound to the port), "loading", "not_ready", "
 """
 import http.client
 import json
+import threading
 import time
 
 def _call(port: int, method: str, path: str, body, timeout: float):
+    """One request with a wall-clock limit. The socket timeout applies to each read, so a
+    listener that trickles bytes could otherwise stretch it without end (spec §4.2)."""
+    raise NotImplementedError
+
+def _request(port: int, method: str, path: str, body, timeout: float):
     raise NotImplementedError
 
 def _json(raw):
@@ -3893,6 +4094,10 @@ HEALTH_TIMEOUT = 0.5
 def run(harness, event, raw: bytes, started: float):
     raise NotImplementedError
 
+def _error_row(cfg: dict, payload: dict, started: float) -> None:
+    """Spec §5, §4.10: a client error still leaves one row, with status `error`."""
+    raise NotImplementedError
+
 def _ensure_service(cfg: dict, port: int) -> bool:
     """Start the service if nothing is bound to the port. Return True if this call spawned it."""
     raise NotImplementedError
@@ -3910,10 +4115,10 @@ def _model_switch(payload: dict) -> None:
 def _base_row(cfg: dict, payload: dict, src: str, now: float) -> dict:
     raise NotImplementedError
 
-def _finish(row: dict, state: dict, started: float, out):
+def _finish(row: dict, state: dict, started: float, out, logged: list):
     raise NotImplementedError
 
-def _prompt(cfg: dict, payload: dict, started: float):
+def _prompt(cfg: dict, payload: dict, started: float, logged: list):
     raise NotImplementedError
 ```
 
@@ -3945,7 +4150,7 @@ if __name__ == '__main__':
 
 Run: `.venv/bin/python -m pytest -q tests/test_client_process.py`
 
-Expected: `23 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `45 failed`; every failure is `NotImplementedError`. Record the output in the task report.
 
 - [ ] **Step 4: Implement**, replacing the stubs with exactly this code
 
@@ -3978,6 +4183,7 @@ def settings_snippet(interpreter: str) -> dict:
 """Start the service fully detached (spec §4.3): no inherited stdin or stdout, stderr to
 service.log, its own session. The caller never waits for it."""
 
+import os
 import subprocess
 
 from . import config, paths
@@ -3989,7 +4195,9 @@ def service_argv(interpreter: str) -> list:
 
 def spawn_service(cfg: dict) -> None:
     home = paths.ensure_home()
-    with open(paths.service_log(), "ab") as log:
+    fd = os.open(paths.service_log(), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "ab") as log:
         subprocess.Popen(
             service_argv(config.interpreter(cfg)),
             stdin=subprocess.DEVNULL,
@@ -4012,10 +4220,32 @@ Outcomes: "ok", "refused" (nothing bound to the port), "loading", "not_ready", "
 
 import http.client
 import json
+import threading
 import time
 
 
 def _call(port: int, method: str, path: str, body, timeout: float):
+    """One request with a wall-clock limit. The socket timeout applies to each read, so a
+    listener that trickles bytes could otherwise stretch it without end (spec §4.2)."""
+    result = {}
+
+    def work():
+        try:
+            result["value"] = _request(port, method, path, body, timeout)
+        except BaseException as exc:  # noqa: BLE001 — handed back to the caller below
+            result["error"] = exc
+
+    worker = threading.Thread(target=work, daemon=True)  # abandoned on timeout; the hook exits soon
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        raise TimeoutError(f"no complete reply within {timeout} s")
+    if "error" in result:
+        raise result["error"]
+    return result["value"]
+
+
+def _request(port: int, method: str, path: str, body, timeout: float):
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
     try:
         data = None if body is None else json.dumps(body).encode("utf-8")
@@ -4089,7 +4319,7 @@ def iso(ts: float) -> str:
 
 def append(row: dict) -> None:
     paths.ensure_home()
-    paths.append_private(paths.decisions_path(), json.dumps(row, ensure_ascii=False))
+    paths.append_private(paths.decisions_path(), json.dumps(row))  # ASCII: a lone surrogate cannot break the write
 
 
 def problem(message: str) -> None:
@@ -4124,19 +4354,35 @@ def run(harness, event, raw: bytes, started: float):
     cfg = config.load()
     if cfg["mode"] == "off":
         return None
-    payload = json.loads(raw.decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("hook input is not a JSON object")
-    if event == "SessionStart":
-        _session_start(cfg, payload)
-        return None
-    if event == "PostModelSwitch":
-        _model_switch(payload)
-        return None
-    if event == "UserPromptSubmit":
-        return _prompt(cfg, payload, started)
+    payload, logged = None, []
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("hook input is not a JSON object")
+        if event == "SessionStart":
+            _session_start(cfg, payload)
+            return None
+        if event == "PostModelSwitch":
+            _model_switch(payload)
+            return None
+        if event == "UserPromptSubmit":
+            return _prompt(cfg, payload, started, logged)
+    except BaseException:
+        if event == "UserPromptSubmit" and not logged:
+            _error_row(cfg, payload if isinstance(payload, dict) else {}, started)
+        raise  # `__main__` writes the client.log line and still exits 0
     decision_log.problem(f"unknown event {event!r}")
     return None
+
+
+def _error_row(cfg: dict, payload: dict, started: float) -> None:
+    """Spec §5, §4.10: a client error still leaves one row, with status `error`."""
+    try:
+        row = _base_row(cfg, payload, None, time.time())
+        row.update(status="error", latency_ms=round((time.monotonic() - started) * 1000, 1))
+        decision_log.append(row)
+    except BaseException:  # noqa: BLE001 — the log itself may be what failed
+        pass
 
 
 def _ensure_service(cfg: dict, port: int) -> bool:
@@ -4145,6 +4391,8 @@ def _ensure_service(cfg: dict, port: int) -> bool:
     if outcome == "refused":
         spawn.spawn_service(cfg)
         return True
+    if outcome in ("foreign", "timeout"):
+        decision_log.problem(f"port {port}: {outcome} on the health check; no service started")
     return False
 
 
@@ -4221,14 +4469,15 @@ def _base_row(cfg: dict, payload: dict, src: str, now: float) -> dict:
     }
 
 
-def _finish(row: dict, state: dict, started: float, out):
+def _finish(row: dict, state: dict, started: float, out, logged: list):
     row["session"] = {"model": state["model"], "effort": state["effort"], "model_source": state["model_source"]}
     row["latency_ms"] = round((time.monotonic() - started) * 1000, 1)
     decision_log.append(row)
+    logged.append(True)
     return out
 
 
-def _prompt(cfg: dict, payload: dict, started: float):
+def _prompt(cfg: dict, payload: dict, started: float, logged: list):
     now = time.time()
     prompt = payload.get("prompt") or ""
     src = source.classify(payload)
@@ -4237,7 +4486,7 @@ def _prompt(cfg: dict, payload: dict, started: float):
     row = _base_row(cfg, payload, src, now)
     if src != "human":
         row.update(status="skipped", suppress_reason={"model": "not_human", "plan": "not_human"})
-        return _finish(row, state, started, None)
+        return _finish(row, state, started, None, logged)
 
     first_human = state["prompt_count"] == 0
     reply = transcript.last_assistant(payload.get("transcript_path")) if state["prompt_count"] >= 1 else None
@@ -4253,13 +4502,15 @@ def _prompt(cfg: dict, payload: dict, started: float):
         status = "decided"
     elif outcome in ("loading", "not_ready", "timeout"):
         status = outcome
+        if outcome == "timeout":
+            decision_log.problem(f"port {port}: no complete reply within {PROFILE_DEADLINE} s")
     else:
         status = "error"
         decision_log.problem(f"unexpected reply from the service on port {port}")
     row["status"] = status
     row["cold"] = status in ("started_service", "loading")
     if status != "decided":
-        return _finish(row, state, started, None)
+        return _finish(row, state, started, None, logged)
 
     questions = resources.questions()
     decision = adapter_claude_code.decide(
@@ -4278,16 +4529,25 @@ def _prompt(cfg: dict, payload: dict, started: float):
             state["model_line_shown"] = True
         if decision["line_for"]["plan"]:
             state["plan_shown"] = True
-        session_state.save(sid, state)
 
     usage = body.get("usage") or {}
     row.update(shown_text="\n".join(shown) or None, suppress_reason=reasons,
                suggestion=decision["suggestion"], mismatches=decision["mismatches"],
                answers=body["answers"], usage=usage, truncated=usage.get("truncated"),
                checkpoint=body.get("checkpoint"))
-    row["versions"]["laya_mlx"] = (body.get("versions") or {}).get("laya_mlx")
+    versions = body.get("versions") or {}
+    row["versions"].update(laya_mlx=versions.get("laya_mlx"), service_laya_harness=versions.get("laya_harness"))
+    served = body.get("question_set")
+    if isinstance(served, dict):  # the row records what produced the answers (spec §4.10, §5)
+        if served != row["question_set"]:
+            decision_log.problem(f"the service runs question set {served} but the client has "
+                                 f"{row['question_set']}: run laya-harness stop")
+        row["question_set"] = served
     out = json.dumps({"systemMessage": "\n".join(shown)}, ensure_ascii=False) if shown else None
-    return _finish(row, state, started, out)
+    out = _finish(row, state, started, out, logged)
+    if shown:
+        session_state.save(sid, state)  # after the row: a failed write never marks a line as shown
+    return out
 ```
 
 `laya_harness/__main__.py`:
@@ -4314,6 +4574,7 @@ def _hook(args: list) -> None:
     real_stdout = None
     try:
         real_stdout = os.dup(1)
+        os.dup2(os.open(os.devnull, os.O_WRONLY), 1)  # nothing a library or child writes reaches Claude
         sys.stdout = sys.stderr  # stray prints must never reach Claude's context
         from . import paths
 
@@ -4359,11 +4620,11 @@ if __name__ == "__main__":
 
 Run: `.venv/bin/python -m pytest -q tests/test_client_process.py`
 
-Expected: `23 passed`.
+Expected: `45 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `206 passed, 1 deselected`.
+Expected: `229 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -4742,7 +5003,7 @@ Expected: `10 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `216 passed, 1 deselected`.
+Expected: `239 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -4826,7 +5087,7 @@ def test_real_service_answers_the_stage0_questions(configured, home):
   Add `laya-harness setup | status | stop | mode` to the gate profile with the results you observed.
 
 - [ ] **Step 3 (controller): Final gates.** Run `.venv/bin/python -m pytest -q` (expected
-  `216 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
+  `239 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
   Contract-drift check: `git status --porcelain -- docs/` must be empty. The controller commits every
   doc change on its own before code, so an uncommitted doc edit can only have come from a subagent.
 
