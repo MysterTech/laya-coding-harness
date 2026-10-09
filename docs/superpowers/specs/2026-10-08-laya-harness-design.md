@@ -101,7 +101,7 @@ Each stage updates this document before any of its code is written.
 | Stage | Outcome |
 |---|---|
 | **0. First working version (Claude Code)** | Section 4. Prompt → hook → service → three questions → one-line suggestion → logged. Advises only, never stops a prompt. |
-| 1. Codex | The same client in a Codex `UserPromptSubmit` command hook; the Codex adapter reads `~/.codex/config.toml`. Proves the shared semantic layer. |
+| 1. Codex | The same client in a Codex `UserPromptSubmit` command hook; the Codex adapter reads `~/.codex/config.toml`. Proves the shared semantic layer. Detailed contract and native preflight: [Stage 1 design](2026-10-09-laya-harness-codex-design.md). Started with the user’s approval while remaining Claude acceptance waits for its weekly limit reset. |
 | 2. Measure | Readers for Claude Code transcripts and Codex sessions; out-of-the-box accuracy per field on held-out sessions; checkpoint comparison; display thresholds tuned. |
 | HUD. Web front door (D15) | The Bridge and a web HUD, with their own spec and mockups first. Day one sits between a read-only view and the full dashboard: routing decisions and receipts plus a chosen set of actions and reports, fixed when the stage starts. No voice in its first phase. Obsidian plugin later. |
 | 3. Learn | Training cases from outcomes, the user's labels and logged overrides; split by session; a GPU fine-tune with upstream `laya-train` (off this Mac, with explicit approval); `laya-mlx convert`; swap and re-measure. |

@@ -1,6 +1,6 @@
 # laya-harness — Codex support design brief
 
-Date: 2026-10-09. Status: proposed scope; not an implementation-ready contract.
+Date: 2026-10-09. Status: Stage 1 scope approved by the user; native preflight in progress. Detailed adapter contract follows verified preflight.
 
 ## Intent and acceptance order
 
@@ -38,3 +38,15 @@ Official documentation read on 2026-10-09:
 - [Plugin packaging](https://developers.openai.com/plugins/build/plugins): manually installed desktop plugins can carry lifecycle hooks; plugin installation alone does not trust them.
 
 The shared contract is [the umbrella design](2026-10-08-laya-harness-design.md). This brief proposes starting Codex design before Claude acceptance completes; it does not amend stage-0 completion gates.
+
+## Native preflight contract (controller only)
+
+The desktop runtime is `/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex`, version `0.162.0-alpha.2`; the Homebrew CLI is `0.155.1`. Use the desktop binary for capability evidence. Its protocol schema was generated offline into `/private/tmp/laya-codex-desktop-schema`.
+
+A scratch-only probe may run the desktop runtime with an isolated Codex home and synthetic session. It must not read credentials, send a model request, download anything, modify real config or bypass hook trust. Inspect model-visible prompt construction with the native debug command if possible. Stop and report any runtime behavior that cannot be verified without a live turn. An exact-trust hash set through the native configuration in the isolated home is permitted; global hook-trust bypass is forbidden.
+
+A temporary project probe, when approved for installation, registers only SessionStart (timeout 8 seconds) and UserPromptSubmit (timeout 3 seconds). It runs the repo virtual-environment Python with `-I` and a dedicated absolute script path under `.workbench/codex-probe/`. The script uses only the standard library, exits 0 for every failure, emits nothing for SessionStart, and emits exactly `{"systemMessage": "laya · Codex hook check (temporary probe)"}` for UserPromptSubmit. It does not call laya-harness or its service.
+
+The probe records only event, session/turn identifiers, model, permission mode, source, presence of agent fields, available field names and prompt character count. It never records prompt text, transcript contents or configuration contents. Capture files and directories have modes 0600 and 0700. The synthetic prompt used for a live check is `Reply with just: hook check complete.` User input and final assistant reply establish no-harm; the warning must be visible to the user and absent from model-visible context. Before the adapter is called supported, record warning rendering, trust behavior, payload and context-separation evidence. Probe removal is part of acceptance cleanup.
+
+The project probe draft is reviewed before installation. It does not replace existing hooks; if a project hook file exists, prepare a merged diff and preserve unrelated hooks. No user-level hook file is changed by this preflight.
