@@ -239,7 +239,8 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
   stage-0 checkpoint is expected to be near chance on these questions and uncalibrated for
   them.** Stage 2 compares checkpoints.
 - **`laya-harness setup`** is run by the user. It is the only thing that touches the network,
-  and the user approves the 807 MB download first. In order, it:
+  and the user approves the 807 MB download first (setup prints the size, source and target
+  before it starts). In order, it:
   1. creates `~/.laya-harness` with mode 0700;
   2. downloads the pinned commit, only the files laya-mlx needs (`model.safetensors`,
      `rl_agent_config.json`, `encoder/config.json`, `tokenizer/*`, `mlx_config.json`), into
@@ -248,7 +249,7 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
      left one there. If a download leaves a required file missing or the weights wrong, setup
      fails;
   3. writes `config.json`: interpreter path, model directory, repo and SHA, port `47913`, and
-     mode `show`. The file's other fields are `model_mode` (`real`, or `fake` for tests and
+     mode `show`. On a re-run, fields the user already set (port, mode) are kept. The file's other fields are `model_mode` (`real`, or `fake` for tests and
      acceptance step 1, with `fake_answers`) and `idle_seconds` (900);
   4. runs the exact registered hook argv once with a sample input;
   5. prints the `settings.json` snippet. It never edits `settings.json` itself.
@@ -403,9 +404,9 @@ All commands use the standard library only, apart from the download in `setup`.
 | Command | Does |
 |---|---|
 | `laya-harness setup` | §4.5 |
-| `laya-harness status` | one line: down / loading / ready / not_ready (with reason), mode, checkpoint SHA, log paths, and any model seen in the log that the catalog does not list |
-| `laya-harness stop` | stops the PID reported by `/v1/health`. It warns when mode is not `off`, since the next prompt restarts the service. |
-| `laya-harness mode show\|log-only\|off` | `show` is normal. `log-only` logs everything and shows nothing. `off` makes the client exit at once, without starting anything or logging. |
+| `laya-harness status` | one line: down / loading / ready / not_ready (with reason) / unreachable (timeout or foreign), mode, checkpoint SHA, log paths, and any model seen in the log that the catalog does not list (read line by line; rows it cannot read are skipped) |
+| `laya-harness stop` | stops the PID reported by `/v1/health`. It warns when mode is not `off`, since the next prompt restarts the service. If nothing is bound it says "not running" (exit 0). If the port answers but not as laya-harness, or does not answer in time, it says so and stops nothing (exit 1), so a script never mistakes a stuck or foreign listener for a stopped service. It never signals a pid that is not a positive integer above 1. |
+| `laya-harness mode show\|log-only\|off` (any other value is refused) | `show` is normal. `log-only` logs everything and shows nothing. `off` makes the client exit at once, without starting anything or logging. |
 
 `LAYA_HARNESS_HOME` moves the state directory, and with it `config.json` and the port, **in
 tests only.** Under the test flag, the client and service refuse to use `~/.laya-harness` or
