@@ -25,7 +25,7 @@ before any task). **Mockup:** spec §4.12 plus `docs/mockups/stage0-check1-*.png
 
 **How this plan was verified (plan preflight):** every code block below was executed in a
 throwaway copy of the repo at commit `1606ae9` (every later commit changes only `docs/` and `README.md`) before being written here, and is copied from those
-files, not retyped. In that copy the full suite passed repeatedly (`185 passed, 1 deselected` with every task, after the review rounds of Tasks 1–4), the
+files, not retyped. In that copy the full suite passed repeatedly (`211 passed, 1 deselected` with every task, after the review rounds of Tasks 1–5), the
 controller-only gate passed (`.venv/bin/python -m pytest -q -m real_model` → `1 passed`, cold start
 to ready plus a warm call in 3.6 s), and each task's tests were run against the stubs in plan order
 with later tasks absent: every test failed, none passed against a stub (the RED counts below).
@@ -2430,18 +2430,26 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
 - Produces:
 - `predictor.FakePredictor(cfg)` and `predictor.RealPredictor(cfg)`, each with `load() -> None`,
   `predict(prompt) -> {"answers", "usage"}` and `laya_mlx_version`; `RealPredictor.missing() -> list`;
-  `predictor.make(cfg)`. Fake-mode config knobs: `fake_answers`, `fake_load_seconds`,
-  `fake_predict_seconds`, `fake_load_error`, `fake_print_stdout`.
-- `service.main() -> int`, run as `python -I -m laya_harness.service`. HTTP on 127.0.0.1:
+  `predictor.make(cfg)`; `predictor.PROMPT_CHAR_CAP = 65536` (the real predictor passes at most that
+  many characters). `RealPredictor.load()` refuses a config `revision` that is not the pinned one
+  (`ValueError`, "run laya-harness setup"). Fake-mode config knobs: `fake_answers`,
+  `fake_load_seconds`, `fake_predict_seconds`, `fake_load_error`, `fake_predict_error`,
+  `fake_print_stdout`.
+- `service.main() -> int`, run as `python -I -m laya_harness.service`; a bad `idle_seconds` raises
+  before the bind (exit 1). HTTP on 127.0.0.1:
   `GET /v1/health` → `{"app": "laya-harness", "version", "pid", "state", "reason", "checkpoint",
   "question_set"}`; `POST /v1/profile {"prompt": str}` → 200 `{"answers", "usage", "checkpoint",
   "question_set", "versions": {"laya_harness", "laya_mlx"}}`, 503 `{"state", "reason"}` while
-  loading or not ready, 400 bad body, 403 foreign Host or any Origin, 404, 415 non-JSON.
-- `tests/procs.py`: `env_for(home)`, `start_service(home)`, `request(port, method, path, body=None,
-  headers=None, timeout=2.0) -> (status, body)`, `wait_health(port, want=("ready",), timeout=10.0)`,
-  `stop(proc)`.
+  loading or not ready, 500 `{"error": <exception class>}` when inference raises, 400 bad body,
+  403 foreign Host or any Origin, 404, 415 non-JSON. Health and profile requests count as activity
+  for the idle exit. Internals the tests use: `_State(cfg, port)`, `_Server` (a
+  `ThreadingHTTPServer` that joins accepted requests on close), `_Handler` (5 s socket timeout),
+  `_watch_idle(st, server, stopped, idle_seconds)`.
+- `tests/procs.py`: `env_for(home)`, `start_service(home, stdout=DEVNULL, stderr=DEVNULL)`,
+  `request(port, method, path, body=None, headers=None, timeout=2.0) -> (status, body)`,
+  `wait_health(port, want=("ready",), timeout=10.0)`, `stop(proc)`.
 
-> The concurrency test proves the bind is the single-instance lock on macOS: of four services started at once, three exit 0 within 1 s and the fake model loads once.
+> Revised after review round 1 (spec §4.4–§6 as of f0b29ef): the idle exit never fires while loading, counts health requests, closes the listener first and finishes accepted requests (5 s handler timeout); a predict failure is a 500; a bad `idle_seconds` exits before the bind; the real predictor refuses an unpinned revision and caps the prompt at 65,536 characters; and 26 more tests pin every field, the request checks on GET and POST, the loopback bind, stdlib-only imports, the MLX lock, stdout, the idle rules and the real predictor's load with a stand-in laya_mlx. The concurrency test proves the bind is the single-instance lock on macOS: of four services started at once, three exit 0 within 1 s and the fake model loads once.
 
 - [ ] **Step 1: Write the supporting files**
 
@@ -2466,9 +2474,9 @@ def env_for(home) -> dict:
     return env
 
 
-def start_service(home) -> subprocess.Popen:
+def start_service(home, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) -> subprocess.Popen:
     return subprocess.Popen([sys.executable, "-I", "-m", "laya_harness.service"], env=env_for(home),
-                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                            stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
 
 
 def request(port, method, path, body=None, headers=None, timeout=2.0):
@@ -2516,15 +2524,23 @@ def stop(proc: subprocess.Popen) -> None:
 
 ```python
 import http.client
+import importlib.abc
+import importlib.util
+import json
+import math
+import os
+import socket
 import subprocess
+import sys
 import threading
 import time
 
 import pytest
 
 from conftest import FAKE_ANSWERS, write_config
-from laya_harness import predictor, resources
-from procs import request, start_service, stop, wait_health
+from laya_harness import config, predictor, resources
+from laya_harness import service as service_module
+from procs import env_for, request, start_service, stop, wait_health
 
 
 @pytest.fixture
@@ -2543,6 +2559,8 @@ def service(configured, home):
         stop(proc)
 
 
+# --- endpoints and request checks ------------------------------------------------------
+
 def test_health_and_profile_in_fake_mode(service, configured):
     service()
     health = wait_health(configured["port"])
@@ -2555,11 +2573,46 @@ def test_health_and_profile_in_fake_mode(service, configured):
     assert body["versions"]["laya_harness"] == "0.0.0"
 
 
+def test_health_and_profile_carry_every_field(service, configured):
+    proc = service()
+    health = wait_health(configured["port"])
+    ck = resources.checkpoint()
+    assert health["pid"] == proc.pid  # `laya-harness stop` signals this pid
+    assert health["version"] == "0.0.0" and health["reason"] is None
+    assert health["checkpoint"] == {"repo": ck["repo"], "revision": ck["revision"], "model_mode": "fake"}
+    status, body = request(configured["port"], "POST", "/v1/profile", {"prompt": "x"})
+    assert status == 200
+    assert body["usage"] == {"truncated": False, "state_tokens": 0, "state_tokens_dropped": 0}
+    assert body["versions"] == {"laya_harness": "0.0.0", "laya_mlx": None}
+    assert body["checkpoint"] == health["checkpoint"] and body["question_set"] == health["question_set"]
+
+
+def test_profile_reports_the_predictors_laya_mlx_version():
+    class Stub:
+        laya_mlx_version = "9.9.9"
+
+        def predict(self, prompt):
+            return {"answers": {}, "usage": {"truncated": True}}
+
+    server = service_module._Server(("127.0.0.1", 0), service_module._Handler)
+    st = service_module._State({"model_mode": "fake"}, server.server_address[1])
+    st.predictor, st.state = Stub(), "ready"
+    server.st = st
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        status, body = request(st.port, "POST", "/v1/profile", {"prompt": "x"})
+        assert status == 200
+        assert body["versions"]["laya_mlx"] == "9.9.9" and body["usage"] == {"truncated": True}
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_rejects_foreign_host_origin_and_content_type(service, configured):
     service()
     port = configured["port"]
     wait_health(port)
-    assert request(port, "GET", "/v1/health", headers={"Host": "evil.example:80"})[0] == 403
+    assert request(port, "GET", "/v1/health", headers={"Host": f"evil.example:{port}"})[0] == 403
     assert request(port, "GET", "/v1/health", headers={"Origin": "http://evil.example"})[0] == 403
     assert request(port, "GET", "/v1/health", headers={"Host": f"localhost:{port}"})[0] == 200
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
@@ -2568,6 +2621,45 @@ def test_rejects_foreign_host_origin_and_content_type(service, configured):
     assert request(port, "GET", "/nope")[0] == 404
     assert request(port, "POST", "/v1/profile", {"wrong": 1})[0] == 400
 
+
+def test_profile_post_rejects_foreign_host_and_any_origin(service, configured):
+    service()
+    port = configured["port"]
+    wait_health(port)
+    prompt = {"prompt": "x"}
+    assert request(port, "POST", "/v1/profile", prompt, headers={"Host": f"evil.example:{port}"})[0] == 403
+    for origin in ("http://evil.example", f"http://127.0.0.1:{port}"):  # any Origin, even a local one
+        assert request(port, "POST", "/v1/profile", prompt, headers={"Origin": origin})[0] == 403
+
+
+def test_bad_bodies_and_paths(service, configured):
+    service()
+    port = configured["port"]
+    wait_health(port)
+    assert request(port, "POST", "/v1/profile", {"prompt": 5})[0] == 400
+    assert request(port, "POST", "/v1/profile", ["x"])[0] == 400
+    assert request(port, "POST", "/v1/elsewhere", {"prompt": "x"})[0] == 404
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+    conn.request("POST", "/v1/profile", body=b"{not json", headers={"Content-Type": "application/json"})
+    assert conn.getresponse().status == 400
+    conn.close()
+
+
+def test_binds_loopback_only(monkeypatch, configured):
+    import http.server
+
+    seen = []
+
+    def refuse(self):
+        seen.append(self.server_address)
+        raise OSError(98 if sys.platform.startswith("linux") else 48, "taken")
+
+    monkeypatch.setattr(http.server.HTTPServer, "server_bind", refuse)
+    assert service_module.main() == 0
+    assert seen == [("127.0.0.1", configured["port"])]
+
+
+# --- loading, single instance, imports ------------------------------------------------
 
 def test_profile_answers_503_while_loading(service, configured):
     service(fake_load_seconds=3)
@@ -2585,6 +2677,20 @@ def test_failed_load_is_not_ready_and_stays_bound(service, configured):
     assert request(configured["port"], "POST", "/v1/profile", {"prompt": "x"})[0] == 503
 
 
+def test_failed_load_loads_once_then_idles_out(service, configured, home):
+    proc = service(fake_load_error="corrupt model.safetensors", idle_seconds=2)
+    port = configured["port"]
+    pid = wait_health(port, want=("not_ready",))["pid"]
+    for _ in range(3):  # spec §6: several prompts in a row, at most one load
+        assert request(port, "POST", "/v1/profile", {"prompt": "x"}) == (
+            503, {"state": "not_ready", "reason": "RuntimeError: corrupt model.safetensors"})
+    assert wait_health(port, want=("not_ready",))["pid"] == pid
+    proc.wait(timeout=2 + 3)  # §4.4 step 4: stays bound only until its idle timeout
+    assert proc.returncode == 0
+    # counted over the service's whole life, so a slow retry loop is caught too
+    assert (home / "fake_loads.txt").read_text().split() == [str(pid)]
+
+
 def test_concurrent_starts_load_once(configured, home):
     write_config(home, fake_load_seconds=3)
     procs = [start_service(home) for _ in range(4)]
@@ -2598,6 +2704,86 @@ def test_concurrent_starts_load_once(configured, home):
         for p in procs:
             stop(p)
 
+
+IMPORT_PROBE = (  # runs the service as `-m` does (the __main__ guard included), then lists new imports
+    "import runpy, sys\n"
+    "before = set(sys.modules)\n"
+    "try:\n"
+    "    runpy.run_module('laya_harness.service', run_name='__main__')\n"
+    "    rc = 0\n"
+    "except SystemExit as exc:\n"
+    "    rc = exc.code\n"
+    "new = {m.partition('.')[0] for m in set(sys.modules) - before}\n"
+    "sys.stderr.write(' '.join(sorted(new - set(sys.stdlib_module_names) - {'laya_harness'})) or 'stdlib only')\n"
+    "sys.exit(rc)\n")
+
+
+def test_service_imports_only_stdlib_when_port_taken_or_fake(configured, home):
+    """§4.4 step 1 (standard library only before the bind) and fake mode (never laya_mlx or mlx)."""
+    argv = [sys.executable, "-I", "-c", IMPORT_PROBE]
+    with socket.socket() as holder:  # port taken: exit 0 at the bind
+        holder.bind(("127.0.0.1", configured["port"]))
+        holder.listen()
+        taken = subprocess.run(argv, env=env_for(home), stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
+    assert (taken.returncode, taken.stdout, taken.stderr) == (0, b"", b"stdlib only")
+    assert not (home / "fake_loads.txt").exists()
+    write_config(home, idle_seconds=1)  # port free: a fake load, then an idle exit
+    served = subprocess.run(argv, env=env_for(home), stdin=subprocess.DEVNULL, capture_output=True, timeout=15)
+    assert (served.returncode, served.stdout, served.stderr) == (0, b"", b"stdlib only")
+    assert len((home / "fake_loads.txt").read_text().split()) == 1
+
+
+# --- inference -------------------------------------------------------------------------
+
+def test_inference_is_serialised_and_health_answers_during_it(service, configured):
+    service(fake_predict_seconds=1.0)
+    port = configured["port"]
+    wait_health(port)
+    statuses = []
+
+    def call():
+        statuses.append(request(port, "POST", "/v1/profile", {"prompt": "x"}, timeout=5)[0])
+
+    threads = [threading.Thread(target=call, daemon=True) for _ in range(2)]
+    started = time.monotonic()
+    for t in threads:
+        t.start()
+    time.sleep(0.3)
+    status, body = request(port, "GET", "/v1/health", timeout=0.5)  # answered while inference runs
+    assert (status, body["state"]) == (200, "ready")
+    for t in threads:
+        t.join(timeout=5)
+    assert statuses == [200, 200]
+    assert time.monotonic() - started >= 1.9  # one MLX lock: the two predictions ran one after the other
+
+
+@pytest.mark.parametrize("changes, state, status", [
+    ({}, "ready", 200),
+    ({"fake_load_error": "corrupt model.safetensors"}, "not_ready", 503),
+])
+def test_service_never_writes_to_stdout(configured, home, changes, state, status):
+    write_config(home, idle_seconds=1, **changes)
+    proc = start_service(home, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        wait_health(configured["port"], want=(state,))
+        assert request(configured["port"], "POST", "/v1/profile", {"prompt": "x"})[0] == status
+        out, err = proc.communicate(timeout=10)  # idle exit, so the interpreter flushes its buffers
+    finally:
+        stop(proc)
+    assert proc.returncode == 0 and out == b""
+    if state == "not_ready":
+        assert b"load failed: RuntimeError: corrupt model.safetensors" in err
+
+
+def test_predict_failure_is_a_500_and_the_service_stays_ready(service, configured):
+    proc = service(fake_predict_error="metal::malloc failed")
+    wait_health(configured["port"])
+    assert request(configured["port"], "POST", "/v1/profile", {"prompt": "x"}) == (500, {"error": "RuntimeError"})
+    assert proc.poll() is None
+    assert wait_health(configured["port"])["state"] == "ready"
+
+
+# --- idle exit -------------------------------------------------------------------------
 
 def test_idle_exit_never_mid_request(service, configured):
     proc = service(idle_seconds=1, fake_predict_seconds=2.5)
@@ -2617,6 +2803,109 @@ def test_idle_exit_never_mid_request(service, configured):
     assert proc.returncode == 0
 
 
+def test_idle_clock_waits_for_the_load(service, configured):
+    proc = service(idle_seconds=1, fake_load_seconds=3)
+    port = configured["port"]
+    wait_health(port, want=("loading",))
+    time.sleep(1.5)  # idle_seconds have passed, but the model is still loading
+    assert request(port, "GET", "/v1/health", timeout=0.5)[1]["state"] in ("loading", "ready")
+    wait_health(port)
+    time.sleep(0.5)  # the idle clock restarted when the load ended
+    assert request(port, "GET", "/v1/health", timeout=0.5)[1]["state"] == "ready"
+    proc.wait(timeout=5)
+    assert proc.returncode == 0  # and the service still exits once idle
+
+
+def test_idle_timer_restarts_after_each_request(service, configured):
+    proc = service(idle_seconds=1.5)
+    port = configured["port"]
+    wait_health(port)
+    for _ in range(4):  # 2.8 s in all: well past one idle period counted from start-up
+        time.sleep(0.7)
+        assert request(port, "POST", "/v1/profile", {"prompt": "x"})[0] == 200
+    assert proc.poll() is None
+    proc.wait(timeout=1.5 + 2)
+    assert proc.returncode == 0
+
+
+def test_health_requests_extend_the_idle_deadline(service, configured):
+    proc = service(idle_seconds=2)
+    port = configured["port"]
+    wait_health(port)
+    for _ in range(4):  # 3.2 s of health checks, more than one idle period from start-up
+        time.sleep(0.8)
+        assert request(port, "GET", "/v1/health")[0] == 200
+    assert proc.poll() is None
+    proc.wait(timeout=5)
+    assert proc.returncode == 0
+
+
+def test_idle_exit_refuses_connections_before_it_stops(configured, home):
+    """§4.3/§4.4: once the idle exit starts, a connect is refused (the client respawns), never
+    accepted into the backlog and then reset when the listener closes."""
+    cfg = config.load()
+    port = config.port(cfg)
+    server = service_module._Server(("127.0.0.1", port), service_module._Handler)
+    st = service_module._State(cfg, port)
+    st.state = "ready"
+    seen = []
+
+    def shutdown():  # stands in for server.shutdown(): probe the port at the moment the exit starts
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=1).close()
+            seen.append("accepted")
+        except ConnectionRefusedError:
+            seen.append("refused")
+
+    server.shutdown = shutdown
+    try:
+        watcher = threading.Thread(target=service_module._watch_idle,
+                                   args=(st, server, threading.Event(), 0.1), daemon=True)
+        watcher.start()
+        watcher.join(timeout=5)
+    finally:
+        server.server_close()
+    assert seen == ["refused"]
+
+
+def test_idle_exit_finishes_a_request_already_accepted(service, configured):
+    proc = service(idle_seconds=1)
+    port = configured["port"]
+    wait_health(port)
+    body = b'{"prompt": "x"}'
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
+        s.sendall(f"POST /v1/profile HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n"
+                  f"Content-Type: application/json\r\nContent-Length: {len(body)}\r\n\r\n".encode())
+        time.sleep(2.0)  # the idle exit starts while this request is still being read
+        assert proc.poll() is None
+        s.sendall(body)
+        assert s.recv(65536).startswith(b"HTTP/1.0 200")
+    proc.wait(timeout=5)
+    assert proc.returncode == 0
+
+
+def test_idle_exit_is_not_held_open_by_a_silent_client(service, configured):
+    proc = service(idle_seconds=1)
+    wait_health(configured["port"])
+    with socket.create_connection(("127.0.0.1", configured["port"]), timeout=10):
+        proc.wait(timeout=9)  # idle 1 s + the 5 s handler timeout + margin
+    assert proc.returncode == 0
+
+
+@pytest.mark.parametrize("value", ["15m", None, [], math.nan, 0, -5])
+def test_bad_idle_seconds_exits_before_loading(configured, home, value):
+    write_config(home, idle_seconds=value)
+    proc = start_service(home, stderr=subprocess.PIPE)
+    try:
+        _, err = proc.communicate(timeout=5)
+    finally:
+        stop(proc)
+    assert proc.returncode == 1 and b"idle_seconds must be a positive number" in err
+    assert not (home / "fake_loads.txt").exists()
+
+
+# --- the real predictor, without weights -------------------------------------------------
+
 def test_real_predictor_rejects_missing_dir_without_download(monkeypatch, tmp_path):
     import laya_mlx.agent as agent_module
 
@@ -2628,6 +2917,92 @@ def test_real_predictor_rejects_missing_dir_without_download(monkeypatch, tmp_pa
         predictor.RealPredictor({"model_dir": str(tmp_path / "absent")}).load()
     with pytest.raises(FileNotFoundError, match="absolute"):
         predictor.RealPredictor({"model_dir": "relative/dir"}).load()
+
+
+def test_real_predictor_refuses_a_revision_that_is_not_pinned(tmp_path):
+    pinned = resources.checkpoint()["revision"]
+    with pytest.raises(ValueError, match=f"names revision 000000000000, not the pinned {pinned[:12]}: "
+                                         "run laya-harness setup"):
+        predictor.RealPredictor({"model_dir": str(tmp_path), "revision": "0" * 40}).load()
+    with pytest.raises(FileNotFoundError, match="missing model.safetensors"):  # the pinned one goes on
+        predictor.RealPredictor({"model_dir": str(tmp_path / "absent"), "revision": pinned}).load()
+
+
+def test_real_predictor_loads_offline_with_check6_settings(monkeypatch, tmp_path, capsys):
+    """§4.4 step 3 without weights: a stand-in laya_mlx records the offline flag at import and at
+    load, the load arguments, max_len at every warm-up, the temperatures and the version."""
+    ck = resources.checkpoint()
+    model_dir = tmp_path / "model"
+    for name in ck["required"]:
+        (model_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (model_dir / name).write_text("{}")
+    seen = {}
+
+    class Agent:
+        temperature = (1.25, 1.5)
+        temperature_by_options = {"4": 1.25}
+
+        def __init__(self):
+            self.cfg = {"max_len": 8192}
+            self.predicted = []
+
+        def predict(self, prompt, questions):
+            self.predicted.append((prompt, self.cfg["max_len"], questions))
+            return {"answers": {}, "usage": {"truncated": False}}
+
+    def load(path, **kwargs):
+        seen.update(path=path, kwargs=kwargs, offline_at_load=os.environ.get("HF_HUB_OFFLINE"), agent=Agent())
+        return seen["agent"]
+
+    class FakeLayaMlx(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+        def find_spec(self, name, path, target=None):
+            return importlib.util.spec_from_loader(name, self) if name == "laya_mlx" else None
+
+        def create_module(self, spec):
+            return None
+
+        def exec_module(self, module):
+            seen["offline_at_import"] = os.environ.get("HF_HUB_OFFLINE")
+            module.__version__ = "9.9.9"
+            module.load = load
+
+    monkeypatch.setitem(sys.modules, "laya_mlx", None)
+    monkeypatch.delitem(sys.modules, "laya_mlx")  # teardown puts back the real module, if any
+    monkeypatch.setattr(sys, "meta_path", [FakeLayaMlx(), *sys.meta_path])
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+
+    assert isinstance(predictor.make({"model_mode": "real", "model_dir": str(model_dir)}), predictor.RealPredictor)
+    p = predictor.RealPredictor({"model_dir": str(model_dir), "revision": ck["revision"]})
+    p.load()
+
+    assert seen["offline_at_import"] == "1" and seen["offline_at_load"] == "1"
+    assert seen["path"] == str(model_dir)
+    assert seen["kwargs"] == {"dtype": "float16", "batch_size": 1, "pad_to_multiple": 128}
+    questions = resources.questions()["questions"]
+    warmed = [(0 if pr == "warm-up" else len(pr.split()), max_len) for pr, max_len, _ in seen["agent"].predicted]
+    assert warmed == [(w, 512) for w in ck["warmup_words"]]
+    assert all(q == questions for *_, q in seen["agent"].predicted)
+    assert p.laya_mlx_version == "9.9.9"
+    assert p.predict("fix the typo") == {"answers": {}, "usage": {"truncated": False}}
+    assert seen["agent"].predicted[-1] == ("fix the typo", 512, questions)
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert json.loads(err.strip().splitlines()[-1]) == {"temperature": [1.25, 1.5], "temperature_by_options": {"4": 1.25}}
+
+
+def test_real_predictor_caps_the_prompt_before_tokenizing():
+    seen = []
+
+    class Agent:
+        def predict(self, prompt, questions):
+            seen.append(prompt)
+            return {"answers": {}, "usage": {}}
+
+    p = predictor.RealPredictor({"model_dir": "/unused"})
+    p.agent = Agent()
+    p.predict("ab" * 2_500_000)
+    assert predictor.PROMPT_CHAR_CAP == 65536
+    assert seen == ["ab" * 32768]  # the beginning is kept, as laya-mlx's own truncation does
 ```
 
 - [ ] **Step 3: Create the modules as stubs**, so the tests fail on behaviour rather than on an import error (golden rule 4)
@@ -2649,6 +3024,7 @@ import time
 from pathlib import Path
 from . import paths, resources
 DEFAULT_FAKE_USAGE = {'truncated': False, 'state_tokens': 0, 'state_tokens_dropped': 0}
+PROMPT_CHAR_CAP = 65536
 
 class FakePredictor:
     laya_mlx_version = None
@@ -2685,9 +3061,10 @@ def make(cfg: dict):
 ```python
 """The local laya service (spec §4.4). Run as `python -I -m laya_harness.service`.
 
-Startup order: bind 127.0.0.1:<port> using the standard library only (the bind is the
-single-instance lock), serve /v1/health from a thread, then load the predictor. A failed load
-leaves the service bound and `not_ready` until its idle timeout. It never writes to stdout.
+Startup order: check `idle_seconds`, then bind 127.0.0.1:<port> using the standard library only
+(the bind is the single-instance lock), serve /v1/health from a thread, then load the predictor.
+A failed load leaves the service bound and `not_ready` until its idle timeout. It never writes
+to stdout.
 """
 import errno
 import json
@@ -2706,8 +3083,15 @@ class _State:
     def health(self) -> dict:
         raise NotImplementedError
 
+    def touch(self) -> None:
+        raise NotImplementedError
+
+class _Server(ThreadingHTTPServer):
+    daemon_threads = False
+
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.0'
+    timeout = 5
 
     def log_message(self, *args):
         raise NotImplementedError
@@ -2724,10 +3108,15 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         raise NotImplementedError
 
-def _watch_idle(st: _State, server, stopped: threading.Event) -> None:
+def _watch_idle(st: _State, server, stopped: threading.Event, idle_seconds: float) -> None:
     raise NotImplementedError
 
 def _load(st: _State) -> None:
+    raise NotImplementedError
+
+def _idle_seconds(cfg: dict) -> float:
+    """`idle_seconds` as a positive number. Anything else, NaN included, is refused before the
+    bind: a watcher that cannot count would keep the model resident for good."""
     raise NotImplementedError
 
 def main() -> int:
@@ -2740,7 +3129,7 @@ if __name__ == '__main__':
 
 Run: `.venv/bin/python -m pytest -q tests/test_service.py`
 
-Expected: `7 failed` (takes about 50 s: every test waits for a service that never answers); every failure is `NotImplementedError` or an assertion that follows from the service never coming up (`test_concurrent_starts_load_once` reports `assert 4 == 3`: all four stub processes exit). Record the output in the task report.
+Expected: `33 failed` (takes about 3 minutes: most tests wait for a service that never answers); every failure is `NotImplementedError`, an assertion that the service never came up, or an assertion that follows from it (`assert 4 == 3` in `test_concurrent_starts_load_once`, where all four stub processes exit; a `NotImplementedError` traceback where the import probe and the bad-`idle_seconds` tests expect their own output). Record the output in the task report.
 
 - [ ] **Step 5: Implement**, replacing the stubs with exactly this code
 
@@ -2764,6 +3153,7 @@ from pathlib import Path
 from . import paths, resources
 
 DEFAULT_FAKE_USAGE = {"truncated": False, "state_tokens": 0, "state_tokens_dropped": 0}
+PROMPT_CHAR_CAP = 65536  # far more than 512 tokens; tokenizing a huge paste would hold the GIL for seconds
 
 
 class FakePredictor:
@@ -2774,6 +3164,7 @@ class FakePredictor:
         self.load_seconds = float(cfg.get("fake_load_seconds", 0))
         self.predict_seconds = float(cfg.get("fake_predict_seconds", 0))
         self.load_error = cfg.get("fake_load_error")
+        self.predict_error = cfg.get("fake_predict_error")
         self.print_stdout = bool(cfg.get("fake_print_stdout"))
 
     def load(self) -> None:
@@ -2787,6 +3178,8 @@ class FakePredictor:
 
     def predict(self, prompt: str) -> dict:
         time.sleep(self.predict_seconds)
+        if self.predict_error:
+            raise RuntimeError(self.predict_error)
         return {"answers": copy.deepcopy(self.answers), "usage": dict(DEFAULT_FAKE_USAGE)}
 
 
@@ -2795,6 +3188,7 @@ class RealPredictor:
         self.checkpoint = resources.checkpoint()
         self.questions = resources.questions()["questions"]
         self.model_dir = cfg.get("model_dir")
+        self.revision = cfg.get("revision")
         self.agent = None
         self.laya_mlx_version = None
 
@@ -2805,6 +3199,10 @@ class RealPredictor:
     def load(self) -> None:
         if not self.model_dir or not os.path.isabs(self.model_dir):
             raise FileNotFoundError("model_dir must be an absolute local directory")
+        pinned = self.checkpoint["revision"]
+        if self.revision is not None and self.revision != pinned:
+            raise ValueError(f"config.json names revision {str(self.revision)[:12]}, not the pinned "
+                             f"{pinned[:12]}: run laya-harness setup")
         missing = self.missing()
         if missing:
             raise FileNotFoundError("missing " + ", ".join(missing))
@@ -2823,7 +3221,7 @@ class RealPredictor:
         self.laya_mlx_version = laya_mlx.__version__
 
     def predict(self, prompt: str) -> dict:
-        return self.agent.predict(prompt, self.questions)
+        return self.agent.predict(prompt[:PROMPT_CHAR_CAP], self.questions)
 
 
 def make(cfg: dict):
@@ -2835,9 +3233,10 @@ def make(cfg: dict):
 ```python
 """The local laya service (spec §4.4). Run as `python -I -m laya_harness.service`.
 
-Startup order: bind 127.0.0.1:<port> using the standard library only (the bind is the
-single-instance lock), serve /v1/health from a thread, then load the predictor. A failed load
-leaves the service bound and `not_ready` until its idle timeout. It never writes to stdout.
+Startup order: check `idle_seconds`, then bind 127.0.0.1:<port> using the standard library only
+(the bind is the single-instance lock), serve /v1/health from a thread, then load the predictor.
+A failed load leaves the service bound and `not_ready` until its idle timeout. It never writes
+to stdout.
 """
 
 import errno
@@ -2855,7 +3254,7 @@ class _State:
     def __init__(self, cfg: dict, port: int):
         self.cfg = cfg
         self.port = port
-        self.lock = threading.Lock()  # guards the counters below
+        self.lock = threading.Lock()  # guards the state and counters below
         self.mlx = threading.Lock()  # all inference runs under this lock
         self.state = "loading"
         self.reason = None
@@ -2870,9 +3269,18 @@ class _State:
         return {"app": "laya-harness", "version": __version__, "pid": os.getpid(), "state": self.state,
                 "reason": self.reason, "checkpoint": self.checkpoint, "question_set": self.question_set}
 
+    def touch(self) -> None:
+        with self.lock:
+            self.last_end = time.monotonic()
+
+
+class _Server(ThreadingHTTPServer):
+    daemon_threads = False  # server_close() then waits for every request already accepted
+
 
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
+    timeout = 5  # a connection that sends nothing is dropped, so it cannot hold the service open
 
     def log_message(self, *args):  # keep service.log for real problems
         pass
@@ -2897,7 +3305,9 @@ class _Handler(BaseHTTPRequestHandler):
         if self._forbidden():
             return
         if self.path == "/v1/health":
-            self._send(200, self.server.st.health())
+            st = self.server.st
+            st.touch()  # a health check counts as activity (SessionStart before the first prompt)
+            self._send(200, st.health())
         else:
             self._send(404, {"error": "not found"})
 
@@ -2925,8 +3335,13 @@ class _Handler(BaseHTTPRequestHandler):
             if st.state != "ready":
                 self._send(503, {"state": st.state, "reason": st.reason})
                 return
-            with st.mlx:
-                result = st.predictor.predict(prompt)
+            try:
+                with st.mlx:
+                    result = st.predictor.predict(prompt)
+            except Exception as exc:  # noqa: BLE001 — a predict failure is answered, never dropped
+                print(f"predict failed: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+                self._send(500, {"error": type(exc).__name__})
+                return
             self._send(200, {"answers": result["answers"], "usage": result["usage"],
                              "checkpoint": st.checkpoint, "question_set": st.question_set,
                              "versions": {"laya_harness": __version__,
@@ -2937,13 +3352,14 @@ class _Handler(BaseHTTPRequestHandler):
                 st.last_end = time.monotonic()
 
 
-def _watch_idle(st: _State, server, stopped: threading.Event) -> None:
-    idle_seconds = float(st.cfg["idle_seconds"])
+def _watch_idle(st: _State, server, stopped: threading.Event, idle_seconds: float) -> None:
     while not stopped.is_set():
         time.sleep(0.2)
-        with st.lock:
-            idle = st.inflight == 0 and time.monotonic() - st.last_end >= idle_seconds
+        with st.lock:  # never idle while loading: a hung load keeps answering `loading`
+            idle = (st.state != "loading" and st.inflight == 0
+                    and time.monotonic() - st.last_end >= idle_seconds)
         if idle:
+            server.socket.close()  # a later connect is refused, so the client starts a fresh service
             server.shutdown()
             stopped.set()
 
@@ -2954,19 +3370,36 @@ def _load(st: _State) -> None:
     try:
         p = predictor.make(st.cfg)
         p.load()
-        st.predictor = p
-        st.state = "ready"
+        with st.lock:  # the idle clock starts again when loading ends
+            st.predictor = p
+            st.state = "ready"
+            st.last_end = time.monotonic()
     except BaseException as exc:  # noqa: BLE001 — any load failure means not_ready
-        st.state = "not_ready"
-        st.reason = f"{type(exc).__name__}: {exc}"
+        with st.lock:
+            st.reason = f"{type(exc).__name__}: {exc}"
+            st.state = "not_ready"
+            st.last_end = time.monotonic()
         print(f"load failed: {st.reason}", file=sys.stderr, flush=True)
+
+
+def _idle_seconds(cfg: dict) -> float:
+    """`idle_seconds` as a positive number. Anything else, NaN included, is refused before the
+    bind: a watcher that cannot count would keep the model resident for good."""
+    try:
+        seconds = float(cfg["idle_seconds"])
+    except (TypeError, ValueError):
+        seconds = 0.0
+    if not seconds > 0:
+        raise ValueError(f"idle_seconds must be a positive number, not {cfg['idle_seconds']!r}")
+    return seconds
 
 
 def main() -> int:
     cfg = config.load()
     port = config.port(cfg)
+    idle_seconds = _idle_seconds(cfg)
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
+        server = _Server(("127.0.0.1", port), _Handler)
     except OSError as exc:
         if exc.errno == errno.EADDRINUSE:
             return 0
@@ -2976,10 +3409,10 @@ def main() -> int:
     server.st = st
     stopped = threading.Event()
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    threading.Thread(target=_watch_idle, args=(st, server, stopped), daemon=True).start()
+    threading.Thread(target=_watch_idle, args=(st, server, stopped, idle_seconds), daemon=True).start()
     _load(st)
     stopped.wait()
-    server.server_close()
+    server.server_close()  # joins the requests already accepted
     return 0
 
 
@@ -2991,11 +3424,11 @@ if __name__ == "__main__":
 
 Run: `.venv/bin/python -m pytest -q tests/test_service.py`
 
-Expected: `7 passed`.
+Expected: `33 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `152 passed, 1 deselected`.
+Expected: `178 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -3874,7 +4307,7 @@ Expected: `23 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `175 passed, 1 deselected`.
+Expected: `201 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -4253,7 +4686,7 @@ Expected: `10 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `185 passed, 1 deselected`.
+Expected: `211 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -4337,7 +4770,7 @@ def test_real_service_answers_the_stage0_questions(configured, home):
   Add `laya-harness setup | status | stop | mode` to the gate profile with the results you observed.
 
 - [ ] **Step 3 (controller): Final gates.** Run `.venv/bin/python -m pytest -q` (expected
-  `185 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
+  `211 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
   Contract-drift check: `git status --porcelain -- docs/` must be empty. The controller commits every
   doc change on its own before code, so an uncommitted doc edit can only have come from a subagent.
 
