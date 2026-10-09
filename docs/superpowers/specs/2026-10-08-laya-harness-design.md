@@ -127,7 +127,11 @@ The service runs laya-mlx, answers three questions per prompt, and exits after 1
 - **stdout is empty, or exactly one JSON object `{"systemMessage": "..."}`,** written last.
   Anything else on stdout becomes context for Claude. SessionStart always prints nothing.
 - Diagnostics go to `~/.laya-harness/client.log`, one line per problem.
-- It calls the service with a **1.5 s total deadline**. Check 6 confirms or adjusts this.
+- It calls the service with a **1.5 s total deadline**, enforced on the wall clock: a listener
+  that trickles bytes cannot stretch it. Check 6 confirms or adjusts this.
+- stdout is also redirected at the file-descriptor level for the hook's run, so nothing written
+  by a library or a child process can reach Claude's context; the one JSON object goes to a
+  saved copy of the original descriptor.
 - **The hook is synchronous, and that is a deliberate cost.** Claude Code holds the prompt
   until the hook exits ("blocks model processing until it completes", hooks docs), so the
   client's whole run time is added before Claude starts: at most about 1.6 s (the 1.5 s
@@ -145,7 +149,7 @@ The service runs laya-mlx, answers three questions per prompt, and exits after 1
   is not from laya-harness.
 - The service is started fully detached, and the client does not wait:
   `Popen([venv_python, "-I", "-m", "laya_harness.service"], stdin=DEVNULL, stdout=DEVNULL,
-  stderr=<append to ~/.laya-harness/service.log>, start_new_session=True,
+  stderr=<append to ~/.laya-harness/service.log, mode 0600>, start_new_session=True,
   cwd=~/.laya-harness)`. Then the client exits.
 - The client exits promptly after spawning. The design review found that the hook runner
   bundled with Claude Code 2.1.288 and 2.1.289 kills everything a still-running hook started
@@ -273,8 +277,8 @@ both start unknown. They are filled in for logging as they become visible:
   against a prompt that runs on the new one.
 - The client reads only the transcript's tail (the last 256 KB) to keep the hook fast, skipping
   a cut-off first line, rows that are not JSON objects, sidechain rows and synthetic models. A
-  `transcript_path` that is not a string, or a missing or unreadable transcript, leaves the
-  values as they were. The reader cannot detect a lagging transcript; the pending-switch rule
+  `transcript_path` that is not a string, is not a regular file (a device or a FIFO would
+  block), or is missing or unreadable leaves the values as they were. The reader cannot detect a lagging transcript; the pending-switch rule
   above handles that.
 - A session file that cannot be read as a JSON object with the expected field types starts again
   from the defaults, so one corrupt file cannot turn every later prompt in that session into an
@@ -373,7 +377,11 @@ temperature scaling and are **not calibrated for this task** until stage 2 measu
 ### 4.10 Decision log
 
 `~/.laya-harness/decisions.jsonl` (mode 0600) gets **one row per UserPromptSubmit,
-failures included,** unless the mode is `off`.
+failures included,** unless the mode is `off`. A client error (bad input, a failed write of
+session state) still leaves a row with status `error`, carrying whatever keys are known. Rows
+are JSON with non-ASCII escaped, so a prompt with a broken surrogate is still logged. The row
+is written before the session's "shown" flags are saved, so a failed write can never mark a
+line as shown that the user did not see.
 
 | Group | Fields |
 |---|---|
@@ -381,7 +389,7 @@ failures included,** unless the mode is `off`.
 | Outcome | `status`: decided, skipped (non-human prompt, not sent), started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, and `suppress_reason` recorded per line as `{model, plan}`, each one of: below_threshold, not_first_prompt, not_human, plan_mode, already_shown, too_short, no_fit or log_only. When several apply, the first in this order is recorded: model line not_first_prompt, below_threshold, no_fit; plan line below_threshold, plan_mode, too_short, already_shown; `suggestion` (model id, effort, class) |
 | Input | `prompt`, `truncated` (from Laya's `usage`) |
 | Laya output | the raw `answers` and `usage` |
-| Versions | `checkpoint` (repo, SHA), `question_set` (id, sha256), `laya_mlx`, `laya_harness`, `adapter_rules`, `catalog` (sha256 of the catalog and the fit table) |
+| Versions | `checkpoint` (repo, SHA), `question_set` (id, sha256, as reported by the service when it answered), `laya_mlx`, `laya_harness` (the client's) and `service_laya_harness` (the service's, when it answered), `adapter_rules`, `catalog` (sha256 of the catalog and the fit table). A question set that differs between client and service also gets a line in `client.log`. |
 | Session state | `model`, `effort` and `model_source` as known at that prompt (§4.6), `permission_mode` |
 | Timing | `latency_ms`, `cold` |
 
