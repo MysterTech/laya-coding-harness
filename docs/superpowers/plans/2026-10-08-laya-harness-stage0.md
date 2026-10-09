@@ -5857,7 +5857,8 @@ def test_real_service_answers_the_stage0_questions(configured, home):
 ```
 
 - [ ] **Step 2 (controller): Register the console script and record the new gates.**
-  Run `.venv/bin/python -m pip install -e ".[dev]"`, then `.venv/bin/laya-harness status`
+  Run `.venv/bin/python -m pip install --no-index --no-build-isolation -e ".[dev]"` (offline: the venv
+  already has setuptools and pytest, so nothing is downloaded), then `.venv/bin/laya-harness status`
   (expected: `laya-harness: down · mode show · checkpoint not set up · logs /Users/thunderstruck/.laya-harness`).
   Add `laya-harness setup | status | stop | mode` to the gate profile with the results you observed.
 
