@@ -6,7 +6,12 @@
 > `superpowers:subagent-driven-development` / `superpowers:executing-plans`. Subagents never run
 > git add/commit/checkout; the controller commits once, at the end. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** the first working version of laya-harness for Claude Code: prompt → hook → local laya
+**Goal:** the most correct code from the user's plan (spec §1, D16), with a dearer setting
+recommended only for a significant quality gain and cost deciding when quality has no
+significant difference. Stage 0 treats a class's fit-table options as having no significant
+quality difference, so the cheapest fitting option wins.
+
+**Stage-0 outcome:** the first working version of laya-harness for Claude Code: prompt → hook → local laya
 service → three questions → at most two advisory lines → one decision-log row, failing open
 everywhere.
 
@@ -23,12 +28,22 @@ block, never added context.
 **Spec:** `docs/superpowers/specs/2026-10-08-laya-harness-design.md` (the contract; read §1.1 and §4
 before any task). **Mockup:** spec §4.12 plus `docs/mockups/stage0-check1-*.png`.
 
-**How this plan was verified (plan preflight):** every code block below was executed in a
-throwaway copy of the repo at commit `1606ae9` (every later commit changes only `docs/` and `README.md`) before being written here, and is copied from those
-files, not retyped. In that copy the full suite passed repeatedly (`255 passed, 1 deselected` with every task, after the review rounds of Tasks 1–7), the
-controller-only gate passed (`.venv/bin/python -m pytest -q -m real_model` → `1 passed`, cold start
-to ready plus a warm call in 3.6 s), and each task's tests were run against the stubs in plan order
-with later tasks absent: every test failed, none passed against a stub (the RED counts below).
+**How this plan was verified (plan preflight, refreshed 2026-10-09):** production and test
+blocks are copied from executed files in `.workbench/plan-verify/`, never retyped. The scaffold
+base is 1606ae9 (later branch commits change documentation only); the current contract is spec `16ab512`, which preserves D16. Isolated task
+replays used earlier tasks implemented and later tasks absent. Their cumulative fake gates
+passed with 30, 35, 90, 153, 218, 314 and 345 tests respectively, each with one real-model test
+deselected. Each task was also run against its regenerated stubs: the observed RED counts are
+below. One import-only test passes stubs, and a separate deliberate dependency mutation proves
+its sensitivity. Task 6's intermediate entry point was executed before the Task 7 replacement.
+
+Independent contract review approved WIP `task-8.r2` plus `task-8.r3`, running the full
+workbench suite: `345 passed, 1 deselected in 80.35 s`. The accepted P2 gaps were also checked
+with deliberate scratch mutations, each caught by its test. The user authorized Codex
+implementers and an independent Codex reviewer for this fix round because Claude limits were
+exhausted. No display copy changed; visual review is **N/A** for the fixes. The real-model gate
+was **not rerun** in this round; its historical success belongs to the prior preflight.
+Task 8's real-model gate, user acceptance and visual comparison remain pending.
 
 ## Scope (2026-10-08, spec D14 as amended by D15)
 
@@ -36,10 +51,12 @@ D14 adopted a target architecture (a Bridge behind front doors, **Laya as the ti
 **Obsidian as the memory**) and parked the hooks. D15 lifts that parking: the harness is built
 first, and the web HUD is a later stage after stage 2 with its own spec and mockups.
 
-- **Execute:** Tasks 1–8 in full, as written. The hook client starts the service itself (§4.3);
-  the Bridge later reuses or replaces that start-up path. Gate counts are the ones each task
-  states.
-- **Then stop** before the final commit: the user reviews the implementation with Codex first.
+- **Current fix round:** refresh the verified implementation of Tasks 1–7 and Task 8 Step 1
+  for the accepted Codex findings, using the docs-first `.workbench` procedure in `AGENTS.md`.
+  The hook client starts the service itself (§4.3); the Bridge later reuses or replaces that path.
+- **Stop before Task 8 Step 2**, as the user instructed. Steps 2–9 remain a future recipe:
+  no console-script install, live setup, acceptance, implementation commit or hook installation
+  is part of this fix round.
 
 ## Global Constraints
 
@@ -49,6 +66,9 @@ first, and the web HUD is a later stage after stage 2 with its own spec and mock
 - Hooks are registered in exec form, `[<venv python>, "-I", "-m", "laya_harness", "hook", "claude-code", <Event>]`, with timeouts SessionStart 8 s, UserPromptSubmit 3 s, PostModelSwitch 3 s.
 - The service listens on 127.0.0.1 only, on the port from `~/.laya-harness/config.json` (default 47913); it binds before importing laya_mlx and never writes to stdout.
 - Profile deadline 1.5 s; SessionStart waits at most 4 s, on `startup` only; idle exit after 900 s, never mid-request.
+- Idle settings must be finite positive actual numbers. Valid health/profile responses count as in flight until completion; rejected requests never reset idle time. Questions/identity/hash come from one byte snapshot passed to the predictor.
+- Profile replies identify laya-harness and are validated before advice: complete finite answer/provenance schema, raw usage, nonnegative integer input_chars_dropped and consistent aggregate truncated. Malformed 200/503 replies give error without a spawn.
+- Each client session mutation uses a separate 0600 lock file with a 50 ms acquisition bound. Release it before inference; final plan eligibility and shown flags use the latest state, while the row keeps the prompt's submission snapshot.
 - Checkpoint `aac6fef/laya-mlx` at `047678560251f28113ee8f5df4be82102c7bf336`, weights sha256 `b9c07bf14be2fa5c78a9193a3e6d840ac80e89e62fc40f425834c3d8a6eaa3de`, loaded from an absolute local directory with `HF_HUB_OFFLINE=1`; `batch_size=1`, `pad_to_multiple=128`, `max_len=512`; every padded length warmed before `ready`.
 - Gates: tier sum ≥ 0.8 (rounded to four decimals); plan-first noul ≥ 0.85, first human prompt or ≥ 200 characters, once per session, never in Plan mode; parallel is logged, never shown. Gate on laya-mlx's four-decimal values; display two decimals.
 - Copy: exactly the §4.12 strings, each ≤ 120 characters. Never Fable. Never a `decision` key. Never `additionalContext` in stage 0.
@@ -116,7 +136,7 @@ At every task boundary, diff this plan's code blocks against the files on disk a
 - `tests/conftest.py`: fixtures `home`, `free_port`, `configured`; constant `FAKE_ANSWERS`;
   helper `write_config(home, **changes) -> dict`. Later tasks import these.
 
-> Revised after review round 1 (findings P2-1 to P2-4 and P3-5 to P3-8): a unique temporary file per atomic write, the real-home guard also refusing its parents and children, existing directories and log files tightened to 0700/0600, the port range checked, no ambient LAYA_HARNESS_HOME in tests, and tests pinning each of these. The `[project.scripts]` entry registers the `laya-harness` console script; the controller reinstalls the package in Task 7 (pip is not a subagent gate). Tests do not need it.
+> Revised after review round 1 (findings P2-1 to P2-4 and P3-5 to P3-8): a unique temporary file per atomic write, the real-home guard also refusing its parents and children, existing directories and log files tightened to 0700/0600, the port range checked, no ambient LAYA_HARNESS_HOME in tests, and tests pinning each of these. The `[project.scripts]` entry registers the `laya-harness` console script; the controller reinstalls the package in Task 8 Step 2 (pip is not a subagent gate). Tests do not need it. The accepted Codex review adds a mutation-sensitive test proving that a conflicting LAYA_HARNESS_PORT never overrides config.
 
 - [ ] **Step 1: Write the supporting files**
 
@@ -351,6 +371,11 @@ def test_port_allows_the_default_outside_tests(monkeypatch):
     assert config.port({"port": 47913}) == 47913
 
 
+def test_port_ignores_a_conflicting_environment_variable(monkeypatch):
+    monkeypatch.setenv("LAYA_HARNESS_PORT", "43210")
+    assert config.port({"port": 5555}) == 5555
+
+
 @pytest.mark.parametrize("bad", [0, -1, 65536])
 def test_port_out_of_range_is_rejected(bad):
     with pytest.raises(ValueError):
@@ -495,7 +520,7 @@ def interpreter(cfg: dict) -> str:
 
 Run: `.venv/bin/python -m pytest -q tests/test_paths_config.py`
 
-Expected: `28 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `29 failed`; failures come from `NotImplementedError` or behavioural assertions against stubbed code. Record the output in the task report.
 
 - [ ] **Step 5: Implement**, replacing the stubs with exactly this code
 
@@ -656,11 +681,11 @@ def interpreter(cfg: dict) -> str:
 
 Run: `.venv/bin/python -m pytest -q tests/test_paths_config.py`
 
-Expected: `28 passed`.
+Expected: `29 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `29 passed, 1 deselected`.
+Expected: `30 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -685,7 +710,8 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
 - Consumes: nothing from earlier tasks.
 - Produces:
 - `resources`: `QUESTIONS`, `CHECKPOINT`, `CATALOG`, `FIT` (paths), `sha256_file(path) -> str`,
-  `questions() -> dict`, `questions_sha256() -> str`, `checkpoint() -> dict`, `catalog() -> dict`,
+  `questions() -> dict`, `questions_snapshot() -> tuple[dict, str]` (document and sha256 from one byte read),
+  `questions_sha256() -> str`, `checkpoint() -> dict`, `catalog() -> dict`,
   `fit() -> dict`, `catalog_sha256() -> str`.
 - Data shapes later tasks rely on: `questions()["questions"]` (passed to laya), `questions()["display"]`
   (`difficulty.min_tier_p`, `plan_first.show_threshold`, `plan_first.min_chars`); checkpoint
@@ -693,7 +719,7 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
   `id, display, family, version, price.input, effort_levels, in_picker, allowed`; fit
   `classes.<class>[]` options of `{"family"|"model", "effort"}`.
 
-> Revised after review round 1: the tests now compare the question set, the checkpoint and every catalog row by equality with tables copied from the spec, pin the option order, and check the hashes against hashlib (including a multi-chunk file and a fit-table edit). The data files are written in the GREEN step (the stub step creates only `resources.py`).
+> Revised after review round 1: the tests now compare the question set, the checkpoint and every catalog row by equality with tables copied from the spec, pin the option order, and check the hashes against hashlib (including a multi-chunk file and a fit-table edit). The data files are written in the GREEN step (the stub step creates only `resources.py`). The accepted Codex review adds questions_snapshot(); Task 5 pins its single-read provenance and the definitions actually executed.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -836,6 +862,10 @@ def sha256_file(path: Path) -> str:
 def questions() -> dict:
     raise NotImplementedError
 
+def questions_snapshot() -> tuple[dict, str]:
+    """Definitions and provenance from one read, even if the file changes during startup."""
+    raise NotImplementedError
+
 def questions_sha256() -> str:
     raise NotImplementedError
 
@@ -857,7 +887,7 @@ def catalog_sha256() -> str:
 
 Run: `.venv/bin/python -m pytest -q tests/test_resources.py`
 
-Expected: `5 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `5 failed`; failures come from `NotImplementedError` or behavioural assertions against stubbed code. Record the output in the task report.
 
 - [ ] **Step 4: Implement**, replacing the stubs with exactly this code
 
@@ -892,6 +922,12 @@ def sha256_file(path: Path) -> str:
 
 def questions() -> dict:
     return _read(QUESTIONS)
+
+
+def questions_snapshot() -> tuple[dict, str]:
+    """Definitions and provenance from one read, even if the file changes during startup."""
+    data = QUESTIONS.read_bytes()
+    return json.loads(data), hashlib.sha256(data).hexdigest()
 
 
 def questions_sha256() -> str:
@@ -1020,7 +1056,7 @@ Expected: `5 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `34 passed, 1 deselected`.
+Expected: `35 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -1049,10 +1085,12 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
 - `session_state.DEFAULT` (keys `model, effort, model_source, switched_at,
   first_prompt_after_switch_at, prompt_count, model_line_shown, plan_shown, updated`),
   `load(session_id) -> dict`, `save(session_id, state) -> None`,
+  `transaction(session_id)` (context manager yielding the latest state, saving on normal exit;
+  a separate 0600 `.lock` file and nonblocking flock acquisition bounded to 50 ms, else TimeoutError),
   `on_session_start(state, source) -> dict`, `on_model_switch(state, to_model, now) -> dict`,
   `switch_pending(state, reply) -> bool`, `on_human_prompt(state, now, reply) -> dict`.
 
-> Revised after review round 1: subagents are recognised by `agent_id` or a `/subagents/` path, never `agent_type` alone; the tail reader skips non-object rows and refuses non-string paths; a mistyped session file falls back to the defaults; a reply's effort is taken as carried; and 33 tests pin the switch edge cases, the tail reader, the session-start resets and a valid state's round trip (review round 2). From the Task 6 review: the tail reader opens regular files only and reads at most TAIL_BYTES, so a FIFO or a device in `transcript_path` can never block the hook (one more test). `tests/fixtures/payloads.json` holds the payload shapes captured in check 4, with identifiers and prompt text replaced.
+> Revised after review round 1: subagents are recognised by `agent_id` or a `/subagents/` path, never `agent_type` alone; the tail reader skips non-object rows and refuses non-string paths; a mistyped session file falls back to the defaults; a reply's effort is taken as carried; and 33 tests pin the switch edge cases, the tail reader, the session-start resets and a valid state's round trip (review round 2). From the Task 6 review: the tail reader opens regular files only and reads at most TAIL_BYTES, so a FIFO or a device in `transcript_path` can never block the hook (one more test). `tests/fixtures/payloads.json` holds the payload shapes captured in check 4, with identifiers and prompt text replaced. The accepted Codex review treats any present agent_id as a subagent after prefix precedence, recovers from parser RecursionError in state and transcript rows, and adds session transactions. Task 6 pins their concurrency, private lock files and 50 ms bound.
 
 - [ ] **Step 1: Write the supporting files**
 
@@ -1185,6 +1223,12 @@ def test_classify_subagent_guard():
     assert source.classify(dict(PAYLOADS["user_prompt_human"], transcript_path="/x/subagents/a.jsonl")) == "subagent"
 
 
+@pytest.mark.parametrize("agent_id", [None, "", False, 0])
+def test_agent_id_presence_is_a_subagent_even_when_falsy(agent_id):
+    assert source.classify(dict(PAYLOADS["user_prompt_human"], agent_id=agent_id)) == "subagent"
+    assert source.classify(dict(PAYLOADS["user_prompt_task_notification"], agent_id=agent_id)) == "task-notification"
+
+
 def test_agent_type_alone_is_still_human():
     # a main session started with --agent carries agent_type on every prompt
     assert source.classify(dict(PAYLOADS["user_prompt_human"], agent_type="reviewer")) == "human"
@@ -1277,6 +1321,13 @@ def test_half_written_and_non_json_lines_are_skipped(tmp_path):
     assert transcript.last_assistant(str(t))["model"] == "claude-opus-4-7"
 
 
+def test_excessively_nested_transcript_row_is_skipped(tmp_path):
+    t = tmp_path / "t.jsonl"
+    t.write_text(_row("claude-opus-4-7", "2026-10-08T04:28:11.000Z") + "\n"
+                 + "[" * 2000 + "0" + "]" * 2000 + "\n")
+    assert transcript.last_assistant(str(t))["model"] == "claude-opus-4-7"
+
+
 @pytest.mark.parametrize("bad", ["garbage", 17])
 def test_bad_timestamp_gives_none(tmp_path, bad):
     t = tmp_path / "t.jsonl"
@@ -1325,6 +1376,12 @@ def test_unsafe_session_id_is_hashed(home):
 def test_corrupt_session_file_starts_from_defaults(home, content):
     (home / "sessions").mkdir(parents=True)
     (home / "sessions" / "sess-1.json").write_text(content)
+    assert session_state.load("sess-1") == DEFAULT
+
+
+def test_excessively_nested_session_file_starts_from_defaults(home):
+    (home / "sessions").mkdir(parents=True)
+    (home / "sessions" / "sess-1.json").write_text("[" * 2000 + "0" + "]" * 2000)
     assert session_state.load("sess-1") == DEFAULT
 
 
@@ -1493,7 +1550,10 @@ prompt. A PostModelSwitch stays authoritative until the transcript holds an assi
 timestamped after the first prompt submitted after that switch.
 """
 import hashlib
+import contextlib
+import fcntl
 import json
+import os
 import re
 import time
 from . import paths
@@ -1515,6 +1575,11 @@ def load(session_id: str) -> dict:
 def save(session_id: str, state: dict) -> None:
     raise NotImplementedError
 
+@contextlib.contextmanager
+def transaction(session_id: str):
+    """Read/modify/write one session under a separate, private lock, waiting at most 50 ms."""
+    raise NotImplementedError
+
 def on_session_start(state: dict, source) -> dict:
     raise NotImplementedError
 
@@ -1533,7 +1598,7 @@ def on_human_prompt(state: dict, now: float, reply) -> dict:
 
 Run: `.venv/bin/python -m pytest -q tests/test_source_session.py`
 
-Expected: `49 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `55 failed` (one expected worker-thread warning from the stubbed transcript reader); failures come from `NotImplementedError` or behavioural assertions against stubbed code. Record the output in the task report.
 
 - [ ] **Step 5: Implement**, replacing the stubs with exactly this code
 
@@ -1561,7 +1626,7 @@ def classify(payload: dict) -> str:
         if prompt.startswith(prefix):
             return name
     transcript_path = payload.get("transcript_path")
-    if payload.get("agent_id") or (isinstance(transcript_path, str) and "/subagents/" in transcript_path):
+    if "agent_id" in payload or (isinstance(transcript_path, str) and "/subagents/" in transcript_path):
         return "subagent"
     return "human"
 ```
@@ -1616,7 +1681,7 @@ def last_assistant(path):
             continue
         try:
             row = json.loads(raw)
-        except ValueError:
+        except (ValueError, RecursionError):
             continue
         if not isinstance(row, dict) or row.get("type") != "assistant" or row.get("isSidechain"):
             continue
@@ -1640,8 +1705,11 @@ prompt. A PostModelSwitch stays authoritative until the transcript holds an assi
 timestamped after the first prompt submitted after that switch.
 """
 
+import contextlib
+import fcntl
 import hashlib
 import json
+import os
 import re
 import time
 
@@ -1697,7 +1765,7 @@ def load(session_id: str) -> dict:
         return dict(DEFAULT)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         return dict(DEFAULT)
     if not isinstance(data, dict):
         return dict(DEFAULT)
@@ -1710,6 +1778,30 @@ def save(session_id: str, state: dict) -> None:
     paths.ensure_home()
     state["updated"] = time.time()
     paths.write_private(_file(session_id), json.dumps(state, sort_keys=True))
+
+
+@contextlib.contextmanager
+def transaction(session_id: str):
+    """Read/modify/write one session under a separate, private lock, waiting at most 50 ms."""
+    paths.ensure_home()
+    fd = os.open(_file(session_id).with_suffix(".lock"), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        deadline = time.monotonic() + 0.05
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("session lock unavailable after 50 ms")
+                time.sleep(min(0.005, remaining))
+        state = load(session_id)
+        yield state
+        save(session_id, state)
+    finally:
+        os.close(fd)  # closing also releases flock, including when the transaction raises
 
 
 def on_session_start(state: dict, source) -> dict:
@@ -1756,11 +1848,11 @@ def on_human_prompt(state: dict, now: float, reply) -> dict:
 
 Run: `.venv/bin/python -m pytest -q tests/test_source_session.py`
 
-Expected: `49 passed`.
+Expected: `55 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `83 passed, 1 deselected`.
+Expected: `90 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -2250,7 +2342,7 @@ def decide(answers: dict, *, first_human: bool, plan_shown: bool, permission_mod
 
 Run: `.venv/bin/python -m pytest -q tests/test_adapter.py`
 
-Expected: `63 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `63 failed`; failures come from `NotImplementedError` or behavioural assertions against stubbed code. Record the output in the task report.
 
 - [ ] **Step 4: Implement**, replacing the stubs with exactly this code
 
@@ -2426,7 +2518,7 @@ Expected: `63 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `146 passed, 1 deselected`.
+Expected: `153 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -2448,28 +2540,33 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
 **Interfaces:**
 - Consumes: `config.load()`, `config.port()`, `paths.*` (Task 1); `resources.*` (Task 2).
 - Produces:
-- `predictor.FakePredictor(cfg)` and `predictor.RealPredictor(cfg)`, each with `load() -> None`,
-  `predict(prompt) -> {"answers", "usage"}` and `laya_mlx_version`; `RealPredictor.missing() -> list`;
-  `predictor.make(cfg)`; `predictor.PROMPT_CHAR_CAP = 65536` (the real predictor passes at most that
-  many characters). `RealPredictor.load()` refuses a config `revision` that is not the pinned one
+- `predictor.FakePredictor(cfg)` and `predictor.RealPredictor(cfg, questions=None)`, each with `load() -> None`,
+  `predict(prompt)` returning `answers`, unchanged raw `usage`, and `input_chars_dropped`, plus
+  `laya_mlx_version`; `RealPredictor.missing() -> list`;
+  `predictor.make(cfg, questions=None)`; `predictor.PROMPT_CHAR_CAP = 65536` (the real predictor passes at most that
+  many characters and reports the dropped character count; fake mode reports zero).
+  `RealPredictor.load()` refuses a config `revision` that is not the pinned one
   (`ValueError`, "run laya-harness setup"). Fake-mode config knobs: `fake_answers`,
   `fake_load_seconds`, `fake_predict_seconds`, `fake_load_error`, `fake_predict_error`,
   `fake_print_stdout`.
 - `service.main() -> int`, run as `python -I -m laya_harness.service`; a bad `idle_seconds` raises
   before the bind (exit 1). HTTP on 127.0.0.1:
   `GET /v1/health` → `{"app": "laya-harness", "version", "pid", "state", "reason", "checkpoint",
-  "question_set"}`; `POST /v1/profile {"prompt": str}` → 200 `{"answers", "usage", "checkpoint",
-  "question_set", "versions": {"laya_harness", "laya_mlx"}}`, 503 `{"state", "reason"}` while
+  "question_set"}`; `POST /v1/profile {"prompt": str}` → 200 `{"app": "laya-harness", "answers", "usage",
+  "input_chars_dropped", "truncated", "checkpoint", "question_set", "versions": {"laya_harness", "laya_mlx"}}`,
+  503 `{"app": "laya-harness", "state", "reason"}` while
   loading or not ready, 500 `{"error": <exception class>}` when inference raises, 400 bad body,
   403 foreign Host or any Origin, 404, 415 non-JSON. Health and profile requests count as activity
-  for the idle exit. Internals the tests use: `_State(cfg, port)`, `_Server` (a
+  until their responses finish; rejected requests never reset the idle clock.
+  Definitions/id/hash come from `resources.questions_snapshot()` and the definitions are passed
+  to the predictor without a reread. Internals the tests use: `_State(cfg, port)`, `_Server` (a
   `ThreadingHTTPServer` that joins accepted requests on close), `_Handler` (5 s socket timeout),
   `_watch_idle(st, server, stopped, idle_seconds)`.
 - `tests/procs.py`: `env_for(home)`, `start_service(home, stdout=DEVNULL, stderr=DEVNULL)`,
   `request(port, method, path, body=None, headers=None, timeout=2.0) -> (status, body)`,
   `wait_health(port, want=("ready",), timeout=10.0)`, `stop(proc)`.
 
-> Revised after review round 1 (spec §4.4–§6 as of f0b29ef): the idle exit never fires while loading, counts health requests, closes the listener first and finishes accepted requests (5 s handler timeout); a predict failure is a 500; a bad `idle_seconds` exits before the bind; the real predictor refuses an unpinned revision and caps the prompt at 65,536 characters; and 26 more tests pin every field, the request checks on GET and POST, the loopback bind, stdlib-only imports, the MLX lock, stdout, the idle rules and the real predictor's load with a stand-in laya_mlx. Review round 2 (spec 5e3aa5b): a client that gives up is not logged, and tests pin the idle-clock reset at the end of loading, the check before the bind, the 500 path off stdout and the beginning kept by the cap. The concurrency test proves the bind is the single-instance lock on macOS: of four services started at once, three exit 0 within 1 s and the fake model loads once.
+> Revised after review round 1 (spec §4.4–§6 as of f0b29ef): the idle exit never fires while loading, counts health requests, closes the listener first and finishes accepted requests (5 s handler timeout); a predict failure is a 500; a bad `idle_seconds` exits before the bind; the real predictor refuses an unpinned revision and caps the prompt at 65,536 characters; and 26 more tests pin every field, the request checks on GET and POST, the loopback bind, stdlib-only imports, the MLX lock, stdout, the idle rules and the real predictor's load with a stand-in laya_mlx. Review round 2 (spec 5e3aa5b): a client that gives up is not logged, and tests pin the idle-clock reset at the end of loading, the check before the bind, the 500 path off stdout and the beginning kept by the cap. The concurrency test proves the bind is the single-instance lock on macOS: of four services started at once, three exit 0 within 1 s and the fake model loads once. The accepted Codex review (spec 16ab512) pins finite positive numeric idle settings, exact parsed JSON media types, health in flight through response completion, one immutable question snapshot, app-tagged replies and aggregate character/token truncation with raw usage retained. Mutation checks prove rejected traffic cannot extend residence and load-time SystemExit becomes not_ready.
 
 - [ ] **Step 1: Write the supporting files**
 
@@ -2546,6 +2643,7 @@ def stop(proc: subprocess.Popen) -> None:
 import http.client
 import importlib.abc
 import importlib.util
+import hashlib
 import json
 import math
 import os
@@ -2554,6 +2652,7 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -2602,6 +2701,8 @@ def test_health_and_profile_carry_every_field(service, configured):
     assert health["checkpoint"] == {"repo": ck["repo"], "revision": ck["revision"], "model_mode": "fake"}
     status, body = request(configured["port"], "POST", "/v1/profile", {"prompt": "x"})
     assert status == 200
+    assert body["app"] == "laya-harness"
+    assert body["input_chars_dropped"] == 0 and body["truncated"] is False
     assert body["usage"] == {"truncated": False, "state_tokens": 0, "state_tokens_dropped": 0}
     assert body["versions"] == {"laya_harness": "0.0.0", "laya_mlx": None}
     assert body["checkpoint"] == health["checkpoint"] and body["question_set"] == health["question_set"]
@@ -2612,7 +2713,7 @@ def test_profile_reports_the_predictors_laya_mlx_version():
         laya_mlx_version = "9.9.9"
 
         def predict(self, prompt):
-            return {"answers": {}, "usage": {"truncated": True}}
+            return {"answers": {}, "usage": {"truncated": True}, "input_chars_dropped": 0}
 
     server = service_module._Server(("127.0.0.1", 0), service_module._Handler)
     st = service_module._State({"model_mode": "fake"}, server.server_address[1])
@@ -2623,6 +2724,7 @@ def test_profile_reports_the_predictors_laya_mlx_version():
         status, body = request(st.port, "POST", "/v1/profile", {"prompt": "x"})
         assert status == 200
         assert body["versions"]["laya_mlx"] == "9.9.9" and body["usage"] == {"truncated": True}
+        assert body["input_chars_dropped"] == 0 and body["truncated"] is True
     finally:
         server.shutdown()
         server.server_close()
@@ -2665,6 +2767,19 @@ def test_bad_bodies_and_paths(service, configured):
     conn.close()
 
 
+@pytest.mark.parametrize("media_type, expected", [
+    ("application/jsonp", 415),
+    ("application/json-garbage", 415),
+    ("application/json; charset=utf-8", 200),
+    ("Application/JSON; charset=utf-8", 200),
+])
+def test_profile_requires_the_parsed_json_media_type(service, configured, media_type, expected):
+    service()
+    wait_health(configured["port"])
+    assert request(configured["port"], "POST", "/v1/profile", {"prompt": "x"},
+                   headers={"Content-Type": media_type})[0] == expected
+
+
 def test_binds_loopback_only(monkeypatch, configured):
     import http.server
 
@@ -2685,7 +2800,8 @@ def test_profile_answers_503_while_loading(service, configured):
     service(fake_load_seconds=3)
     health = wait_health(configured["port"], want=("loading",))
     assert health["state"] == "loading"
-    assert request(configured["port"], "POST", "/v1/profile", {"prompt": "x"}) == (503, {"state": "loading", "reason": None})
+    assert request(configured["port"], "POST", "/v1/profile", {"prompt": "x"}) == (
+        503, {"app": "laya-harness", "state": "loading", "reason": None})
 
 
 def test_failed_load_is_not_ready_and_stays_bound(service, configured):
@@ -2703,12 +2819,26 @@ def test_failed_load_loads_once_then_idles_out(service, configured, home):
     pid = wait_health(port, want=("not_ready",))["pid"]
     for _ in range(3):  # spec §6: several prompts in a row, at most one load
         assert request(port, "POST", "/v1/profile", {"prompt": "x"}) == (
-            503, {"state": "not_ready", "reason": "RuntimeError: corrupt model.safetensors"})
+            503, {"app": "laya-harness", "state": "not_ready", "reason": "RuntimeError: corrupt model.safetensors"})
     assert wait_health(port, want=("not_ready",))["pid"] == pid
     proc.wait(timeout=2 + 3)  # §4.4 step 4: stays bound only until its idle timeout
     assert proc.returncode == 0
     # counted over the service's whole life, so a slow retry loop is caught too
     assert (home / "fake_loads.txt").read_text().split() == [str(pid)]
+
+
+def test_system_exit_during_loading_becomes_not_ready(monkeypatch, capsys):
+    class Exiting:
+        def load(self):
+            raise SystemExit(2)
+
+    monkeypatch.setattr(predictor, "make", lambda *args, **kwargs: Exiting())
+    st = service_module._State({"model_mode": "fake"}, 0)
+    before = st.last_end
+    service_module._load(st)
+    assert st.state == "not_ready" and st.reason == "SystemExit: 2"
+    assert st.last_end >= before and st.predictor is None
+    assert capsys.readouterr().err == "load failed: SystemExit: 2\n"
 
 
 def test_concurrent_starts_load_once(configured, home):
@@ -2893,6 +3023,71 @@ def test_health_requests_extend_the_idle_deadline(service, configured):
     assert proc.returncode == 0
 
 
+def test_slow_health_response_stays_inflight_and_restarts_idle_at_its_end(monkeypatch):
+    server = service_module._Server(("127.0.0.1", 0), service_module._Handler)
+    st = service_module._State({"model_mode": "fake"}, server.server_address[1])
+    st.state = "ready"
+    server.st = st
+    entered, release, stopped = threading.Event(), threading.Event(), threading.Event()
+    original = service_module._Handler._send
+
+    def slow_send(self, code, body):
+        entered.set()
+        assert release.wait(timeout=3)
+        original(self, code, body)
+
+    monkeypatch.setattr(service_module._Handler, "_send", slow_send)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    replies = []
+    caller = threading.Thread(target=lambda: replies.append(request(st.port, "GET", "/v1/health")))
+    watcher = threading.Thread(target=service_module._watch_idle,
+                               args=(st, server, stopped, 0.1), daemon=True)
+    try:
+        caller.start()
+        assert entered.wait(timeout=2)
+        request_started = st.last_end
+        watcher.start()
+        time.sleep(0.35)  # beyond the idle period while the response is still blocked
+        assert st.inflight == 1 and server.socket.fileno() != -1
+        assert st.last_end == request_started
+        released_at = time.monotonic()
+        release.set()
+        caller.join(timeout=2)
+        assert not caller.is_alive() and replies[0][0] == 200
+        assert st.inflight == 0 and st.last_end >= released_at
+    finally:
+        stopped.set()
+        release.set()
+        caller.join(timeout=3)
+        if watcher.ident is not None:
+            watcher.join(timeout=3)
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize("method, path, body, headers, expected", [
+    ("POST", "/v1/profile", {"prompt": 5}, {}, 400),
+    ("GET", "/v1/health", None, {"Origin": "http://evil.example"}, 403),
+    ("GET", "/missing", None, {}, 404),
+    ("POST", "/v1/profile", {"prompt": "x"}, {"Content-Type": "text/plain"}, 415),
+])
+def test_rejected_requests_do_not_extend_idle_residence(service, configured, method, path, body, headers, expected):
+    proc = service(idle_seconds=0.5)
+    port = configured["port"]
+    wait_health(port)
+    deadline = time.monotonic() + 1.5
+    rejected = 0
+    while time.monotonic() < deadline:
+        try:
+            assert request(port, method, path, body, headers)[0] == expected
+            rejected += 1
+        except ConnectionRefusedError:
+            break
+        time.sleep(0.1)
+    proc.wait(timeout=max(0.001, deadline + 0.3 - time.monotonic()))
+    assert rejected >= 1 and proc.returncode == 0
+
+
 def test_idle_exit_refuses_connections_before_it_stops(configured, home):
     """§4.3/§4.4: once the idle exit starts, a connect is refused (the client respawns), never
     accepted into the backlog and then reset when the listener closes."""
@@ -2969,6 +3164,21 @@ def test_bad_idle_seconds_is_refused_before_the_bind(configured, home):
         finally:
             stop(proc)
     assert proc.returncode == 1 and b"idle_seconds must be a positive number" in err
+
+
+@pytest.mark.parametrize("value", [True, False, "10", math.inf, -math.inf])
+def test_non_numeric_or_non_finite_idle_is_refused_before_binding(configured, home, value):
+    write_config(home, idle_seconds=value)
+    with socket.socket() as holder:
+        holder.bind(("127.0.0.1", configured["port"]))
+        holder.listen()
+        proc = start_service(home, stderr=subprocess.PIPE)
+        try:
+            _, err = proc.communicate(timeout=5)
+        finally:
+            stop(proc)
+    assert proc.returncode == 1 and b"idle_seconds must be a positive number" in err
+    assert not (home / "fake_loads.txt").exists()
 
 
 # --- the real predictor, without weights -------------------------------------------------
@@ -3050,7 +3260,7 @@ def test_real_predictor_loads_offline_with_check6_settings(monkeypatch, tmp_path
     assert warmed == [(w, 512) for w in ck["warmup_words"]]
     assert all(q == questions for *_, q in seen["agent"].predicted)
     assert p.laya_mlx_version == "9.9.9"
-    assert p.predict("fix the typo") == {"answers": {}, "usage": {"truncated": False}}
+    assert p.predict("fix the typo") == {"answers": {}, "usage": {"truncated": False}, "input_chars_dropped": 0}
     assert seen["agent"].predicted[-1] == ("fix the typo", 512, questions)
     out, err = capsys.readouterr()
     assert out == ""
@@ -3071,6 +3281,101 @@ def test_real_predictor_caps_the_prompt_before_tokenizing():
     p.predict(prompt)
     assert predictor.PROMPT_CHAR_CAP == 65536
     assert seen == [prompt[:65536]] and seen[0].startswith("head ")  # the beginning is kept, as laya-mlx's own truncation does
+
+
+@pytest.mark.parametrize("length", [65535, 65536, 65543])
+@pytest.mark.parametrize("token_truncated", [False, True])
+def test_character_cap_is_reported_without_changing_raw_usage(length, token_truncated):
+    usage = {"truncated": token_truncated, "state_tokens": 258, "state_tokens_dropped": 0,
+             "future_field": {"value": "retained"}}
+    seen = []
+
+    class Agent:
+        def predict(self, prompt, questions):
+            seen.append(prompt)
+            return {"answers": {}, "usage": usage}
+
+    p = predictor.RealPredictor({"model_dir": "/unused"})
+    p.agent = Agent()
+    result = p.predict("-" * length)
+    assert result["input_chars_dropped"] == max(0, length - 65536)
+    assert seen == ["-" * min(length, 65536)]
+    assert result["usage"] is usage and usage == {
+        "truncated": token_truncated, "state_tokens": 258, "state_tokens_dropped": 0,
+        "future_field": {"value": "retained"}}
+
+
+@pytest.mark.parametrize("characters_dropped, token_truncated", [(0, False), (0, True), (7, False), (7, True)])
+def test_profile_aggregates_character_and_token_truncation(characters_dropped, token_truncated):
+    usage = {"truncated": token_truncated, "state_tokens": 258, "state_tokens_dropped": 0}
+
+    class Stub:
+        laya_mlx_version = "9.9.9"
+
+        def predict(self, prompt):
+            return {"answers": FAKE_ANSWERS, "usage": usage, "input_chars_dropped": characters_dropped}
+
+    server = service_module._Server(("127.0.0.1", 0), service_module._Handler)
+    st = service_module._State({"model_mode": "fake"}, server.server_address[1])
+    st.predictor, st.state = Stub(), "ready"
+    server.st = st
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        status, body = request(st.port, "POST", "/v1/profile", {"prompt": "x"})
+        assert status == 200 and body["app"] == "laya-harness"
+        assert body["input_chars_dropped"] == characters_dropped
+        assert body["truncated"] is (token_truncated or characters_dropped > 0)
+        assert body["usage"] == usage
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_question_snapshot_survives_an_edit_before_predictor_loading(monkeypatch, tmp_path):
+    original = resources.QUESTIONS.read_bytes()
+    question_file = tmp_path / "questions.json"
+    question_file.write_bytes(original)
+    monkeypatch.setattr(resources, "QUESTIONS", question_file)
+    st = service_module._State({"model_mode": "real", "model_dir": "/unused"}, 0)
+    changed = json.loads(original)
+    changed["id"] = "edited"
+    changed["questions"]["difficulty"]["instructions"] = "changed after state creation"
+    question_file.write_text(json.dumps(changed))
+    executed = []
+    monkeypatch.setattr(predictor.RealPredictor, "load", lambda self: executed.append(self.questions))
+    service_module._load(st)
+    assert st.state == "ready"
+    assert executed == [json.loads(original)["questions"]]
+    assert st.question_set == {"id": json.loads(original)["id"], "sha256": hashlib.sha256(original).hexdigest()}
+
+
+def test_service_reads_the_question_bytes_only_once(monkeypatch, tmp_path):
+    import builtins
+
+    original = resources.QUESTIONS.read_bytes()
+    question_file = tmp_path / "questions.json"
+    question_file.write_bytes(original)
+    monkeypatch.setattr(resources, "QUESTIONS", question_file)
+    opens = []
+    path_open, builtin_open = Path.open, builtins.open
+
+    def trace_path(self, *args, **kwargs):
+        if self == question_file:
+            opens.append(self)
+        return path_open(self, *args, **kwargs)
+
+    def trace_builtin(file, *args, **kwargs):
+        if file == question_file:
+            opens.append(file)
+        return builtin_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", trace_path)
+    monkeypatch.setattr(builtins, "open", trace_builtin)
+    st = service_module._State({"model_mode": "real", "model_dir": "/unused"}, 0)
+    monkeypatch.setattr(predictor.RealPredictor, "load", lambda self: None)
+    service_module._load(st)
+    assert st.state == "ready" and opens == [question_file]
+    assert st.question_set["sha256"] == hashlib.sha256(original).hexdigest()
 ```
 
 - [ ] **Step 3: Create the modules as stubs**, so the tests fail on behaviour rather than on an import error (golden rule 4)
@@ -3108,7 +3413,7 @@ class FakePredictor:
 
 class RealPredictor:
 
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, questions: dict | None=None):
         raise NotImplementedError
 
     def missing(self) -> list:
@@ -3120,7 +3425,7 @@ class RealPredictor:
     def predict(self, prompt: str) -> dict:
         raise NotImplementedError
 
-def make(cfg: dict):
+def make(cfg: dict, questions: dict | None=None):
     raise NotImplementedError
 ```
 
@@ -3136,6 +3441,7 @@ to stdout.
 """
 import errno
 import json
+import math
 import os
 import sys
 import threading
@@ -3151,7 +3457,10 @@ class _State:
     def health(self) -> dict:
         raise NotImplementedError
 
-    def touch(self) -> None:
+    def begin(self) -> None:
+        raise NotImplementedError
+
+    def end(self) -> None:
         raise NotImplementedError
 
 class _Server(ThreadingHTTPServer):
@@ -3186,7 +3495,7 @@ def _load(st: _State) -> None:
     raise NotImplementedError
 
 def _idle_seconds(cfg: dict) -> float:
-    """`idle_seconds` as a positive number. Anything else, NaN included, is refused before the
+    """`idle_seconds` as a finite positive number. Anything else is refused before the
     bind: a watcher that cannot count would keep the model resident for good."""
     raise NotImplementedError
 
@@ -3200,7 +3509,7 @@ if __name__ == '__main__':
 
 Run: `.venv/bin/python -m pytest -q tests/test_service.py`
 
-Expected: `38 failed` (takes about 3 minutes: most tests wait for a service that never answers); every failure is `NotImplementedError`, an assertion that the service never came up, or an assertion that follows from it (`assert 4 == 3` in `test_concurrent_starts_load_once`, where all four stub processes exit; a `NotImplementedError` traceback where the import probe and the bad-`idle_seconds` tests expect their own output). Record the output in the task report.
+Expected: `65 failed` (measured 294.40 s: most tests wait for a service that never answers); failures come from `NotImplementedError` or behavioural assertions against stubbed code, an assertion that the service never came up, or an assertion that follows from it (`assert 4 == 3` in `test_concurrent_starts_load_once`, where all four stub processes exit; a `NotImplementedError` traceback where the import probe and the bad-`idle_seconds` tests expect their own output). Record the output in the task report.
 
 - [ ] **Step 5: Implement**, replacing the stubs with exactly this code
 
@@ -3251,13 +3560,14 @@ class FakePredictor:
         time.sleep(self.predict_seconds)
         if self.predict_error:
             raise RuntimeError(self.predict_error)
-        return {"answers": copy.deepcopy(self.answers), "usage": dict(DEFAULT_FAKE_USAGE)}
+        return {"answers": copy.deepcopy(self.answers), "usage": dict(DEFAULT_FAKE_USAGE),
+                "input_chars_dropped": 0}
 
 
 class RealPredictor:
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, questions: dict | None = None):
         self.checkpoint = resources.checkpoint()
-        self.questions = resources.questions()["questions"]
+        self.questions = resources.questions_snapshot()[0]["questions"] if questions is None else questions
         self.model_dir = cfg.get("model_dir")
         self.revision = cfg.get("revision")
         self.agent = None
@@ -3292,11 +3602,12 @@ class RealPredictor:
         self.laya_mlx_version = laya_mlx.__version__
 
     def predict(self, prompt: str) -> dict:
-        return self.agent.predict(prompt[:PROMPT_CHAR_CAP], self.questions)
+        result = self.agent.predict(prompt[:PROMPT_CHAR_CAP], self.questions)
+        return {**result, "input_chars_dropped": max(0, len(prompt) - PROMPT_CHAR_CAP)}
 
 
-def make(cfg: dict):
-    return FakePredictor(cfg) if cfg.get("model_mode") == "fake" else RealPredictor(cfg)
+def make(cfg: dict, questions: dict | None = None):
+    return FakePredictor(cfg) if cfg.get("model_mode") == "fake" else RealPredictor(cfg, questions)
 ```
 
 `laya_harness/service.py`:
@@ -3312,6 +3623,7 @@ to stdout.
 
 import errno
 import json
+import math
 import os
 import sys
 import threading
@@ -3334,14 +3646,21 @@ class _State:
         self.predictor = None
         ck = resources.checkpoint()
         self.checkpoint = {"repo": ck["repo"], "revision": ck["revision"], "model_mode": cfg["model_mode"]}
-        self.question_set = {"id": resources.questions()["id"], "sha256": resources.questions_sha256()}
+        question_snapshot, question_hash = resources.questions_snapshot()
+        self.questions = question_snapshot["questions"]
+        self.question_set = {"id": question_snapshot["id"], "sha256": question_hash}
 
     def health(self) -> dict:
         return {"app": "laya-harness", "version": __version__, "pid": os.getpid(), "state": self.state,
                 "reason": self.reason, "checkpoint": self.checkpoint, "question_set": self.question_set}
 
-    def touch(self) -> None:
+    def begin(self) -> None:
         with self.lock:
+            self.inflight += 1
+
+    def end(self) -> None:
+        with self.lock:
+            self.inflight -= 1
             self.last_end = time.monotonic()
 
 
@@ -3382,8 +3701,11 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/v1/health":
             st = self.server.st
-            st.touch()  # a health check counts as activity (SessionStart before the first prompt)
-            self._send(200, st.health())
+            st.begin()
+            try:
+                self._send(200, st.health())
+            finally:
+                st.end()
         else:
             self._send(404, {"error": "not found"})
 
@@ -3393,7 +3715,7 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path != "/v1/profile":
             self._send(404, {"error": "not found"})
             return
-        if not (self.headers.get("Content-Type") or "").startswith("application/json"):
+        if self.headers.get_content_type() != "application/json":
             self._send(415, {"error": "application/json required"})
             return
         try:
@@ -3405,11 +3727,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(400, {"error": "expected {\"prompt\": str}"})
             return
         st = self.server.st
-        with st.lock:
-            st.inflight += 1
+        st.begin()
         try:
             if st.state != "ready":
-                self._send(503, {"state": st.state, "reason": st.reason})
+                self._send(503, {"app": "laya-harness", "state": st.state, "reason": st.reason})
                 return
             try:
                 with st.mlx:
@@ -3418,14 +3739,14 @@ class _Handler(BaseHTTPRequestHandler):
                 print(f"predict failed: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
                 self._send(500, {"error": type(exc).__name__})
                 return
-            self._send(200, {"answers": result["answers"], "usage": result["usage"],
+            self._send(200, {"app": "laya-harness", "answers": result["answers"], "usage": result["usage"],
+                             "input_chars_dropped": result["input_chars_dropped"],
+                             "truncated": result["usage"]["truncated"] or result["input_chars_dropped"] > 0,
                              "checkpoint": st.checkpoint, "question_set": st.question_set,
                              "versions": {"laya_harness": __version__,
                                           "laya_mlx": st.predictor.laya_mlx_version}})
         finally:
-            with st.lock:
-                st.inflight -= 1
-                st.last_end = time.monotonic()
+            st.end()
 
 
 def _watch_idle(st: _State, server, stopped: threading.Event, idle_seconds: float) -> None:
@@ -3444,7 +3765,7 @@ def _load(st: _State) -> None:
     from . import predictor
 
     try:
-        p = predictor.make(st.cfg)
+        p = predictor.make(st.cfg, questions=st.questions)
         p.load()
         with st.lock:  # the idle clock starts again when loading ends
             st.predictor = p
@@ -3459,15 +3780,12 @@ def _load(st: _State) -> None:
 
 
 def _idle_seconds(cfg: dict) -> float:
-    """`idle_seconds` as a positive number. Anything else, NaN included, is refused before the
+    """`idle_seconds` as a finite positive number. Anything else is refused before the
     bind: a watcher that cannot count would keep the model resident for good."""
-    try:
-        seconds = float(cfg["idle_seconds"])
-    except (TypeError, ValueError):
-        seconds = 0.0
-    if not seconds > 0:
+    value = cfg["idle_seconds"]
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
         raise ValueError(f"idle_seconds must be a positive number, not {cfg['idle_seconds']!r}")
-    return seconds
+    return float(value)
 
 
 def main() -> int:
@@ -3500,11 +3818,11 @@ if __name__ == "__main__":
 
 Run: `.venv/bin/python -m pytest -q tests/test_service.py`
 
-Expected: `38 passed`.
+Expected: `65 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `184 passed, 1 deselected`.
+Expected: `218 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -3536,17 +3854,22 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
 - `service_client.health(port, timeout) -> (outcome, body)`,
   `service_client.profile(port, prompt, deadline) -> (outcome, body)`; outcomes `ok`, `refused`,
   `loading`, `not_ready`, `timeout`, `foreign`, `error`. Each call has a wall-clock limit (the
-  request runs in a daemon thread), so a trickling listener cannot stretch it.
+  request runs in a daemon thread), so a trickling listener cannot stretch it. A profile is `ok`
+  only with the app identity and the complete validated answer/provenance/truncation schema;
+  malformed 200/503 replies are `error`, never a trigger to spawn.
 - `decision_log`: `SCHEMA_VERSION = 1`, `iso(ts) -> str`, `append(row) -> None`, `problem(message) -> None`.
 - `client.run(harness, event, raw: bytes, started: float) -> str | None`; `PROFILE_DEADLINE = 1.5`,
   `WAIT_BUDGET = 4.0`, `HEALTH_TIMEOUT = 0.5`; `_wait_until_ready(port, spawned)` (the tests drive
   it with a fake clock). A UserPromptSubmit that raises still appends a row with status `error`;
   the row is written before the session's shown flags are saved; a decided row records the
-  service's `question_set` and `versions.service_laya_harness`.
+  service's `question_set`, `versions.service_laya_harness`, `input_chars_dropped`, aggregate
+  `truncated` and unchanged raw `usage`. All client session mutations use `transaction()`;
+  no lock is held during the profile call, and the final plan claim/flags merge uses latest
+  disk state while the row retains its submission-time model/effort snapshot.
 - `__main__.main(argv=None) -> int`; `python -I -m laya_harness hook claude-code <Event>` never
   raises and always exits 0.
 
-> Revised after review round 1 (spec 516719a): wall-clock deadlines; an `error` row on any client failure; rows escape non-ASCII and are written before the shown flags are saved; rows record the service's question set and version; `service.log` is 0600; timeouts and foreign listeners get a `client.log` line; stdout is redirected at the descriptor level during a hook; and 22 more tests pin the exec-form argv, spawn only on refused, the detached session and its log, the wait's stop conditions and poll cap, file modes and skipped-row reasons. Contract files (hook contract §4.2, decision log §4.10): route the code review to `opus` per the gate profile. `__main__.py` here ends with a usage message for non-hook arguments; Task 7 replaces those three lines with the commands dispatch.
+> Revised after review round 1 (spec 516719a): wall-clock deadlines; an `error` row on any client failure; rows escape non-ASCII and are written before the shown flags are saved; rows record the service's question set and version; `service.log` is 0600; timeouts and foreign listeners get a `client.log` line; stdout is redirected at the descriptor level during a hook; and 22 more tests pin the exec-form argv, spawn only on refused, the detached session and its log, the wait's stop conditions and poll cap, file modes and skipped-row reasons. Contract files (hook contract §4.2, decision log §4.10): route the code review to `opus` per the gate profile. `__main__.py` here ends with a usage message for non-hook arguments; Task 7 replaces those three lines with the commands dispatch. The accepted Codex review (spec 16ab512) adds transactions, overlap/switch regressions, strict profile validation, raw usage plus aggregate truncation rows, and tightening an existing client.log even on a quiet or off hook. Mutation checks pin stdlib-only imports, injected SystemExit(2) giving exit 0, and a failed first prompt consuming model eligibility before inference. The intermediate Task 6 entry point was independently executed before generating this block.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3555,6 +3878,8 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
 ```python
 """Process-level tests of the hook client (spec §6): they run the exact registered argv."""
 
+import copy
+import fcntl
 import json
 import os
 import signal
@@ -3676,7 +4001,8 @@ def human(prompt="fix the typo in README", session="sess-1"):
 
 
 def served_reply(**changes):
-    reply = {"answers": ABOVE_GATE, "usage": {"truncated": False},
+    reply = {"app": "laya-harness", "answers": copy.deepcopy(ABOVE_GATE), "usage": {"truncated": False},
+             "input_chars_dropped": 0, "truncated": False,
              "checkpoint": {"repo": "aac6fef/laya-mlx", "revision": "r", "model_mode": "fake"},
              "question_set": {"id": "profile_v0", "sha256": "0" * 64},
              "versions": {"laya_harness": "9.9.9", "laya_mlx": "0.3.0"}}
@@ -3702,6 +4028,7 @@ def test_garbage_stdin_prints_nothing(configured, home):
 def test_client_error_still_logs_an_error_row(configured, home, payload):
     assert run_hook(home, "UserPromptSubmit", payload).stdout == b""
     assert [r["status"] for r in rows(home)] == ["error"]  # spec §5: one row, status error
+    assert rows(home)[0]["input_chars_dropped"] is None and rows(home)[0]["truncated"] is None
     assert "hook failed" in (home / "client.log").read_text()
 
 
@@ -3988,6 +4315,250 @@ def test_settings_snippet_uses_the_same_argv():
     assert [entry["command"], *entry["args"]] == hookargv.hook_argv("/x/py", "claude-code", "UserPromptSubmit")
     assert {e: snippet["hooks"][e][0]["hooks"][0]["timeout"] for e in hookargv.EVENTS} == {
         "SessionStart": 8, "UserPromptSubmit": 3, "PostModelSwitch": 3}
+
+
+# --- accepted review regressions (spec §4.2, §4.4, §4.6, §4.10) ---------------------------
+
+@pytest.mark.parametrize("mode", ["show", "off"])
+def test_quiet_hook_tightens_existing_client_log(configured, home, mode):
+    write_config(home, mode=mode)
+    path = home / "client.log"
+    path.write_text("")
+    path.chmod(0o644)
+    assert run_hook(home, "UserPromptSubmit", human("<task-notification done>")).stdout == b""
+    assert path.read_text() == ""
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_hook_imports_only_the_standard_library(configured, home):
+    code = """
+import importlib.abc, sys
+class BlockThirdParty(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        name = fullname.partition('.')[0]
+        if name not in sys.stdlib_module_names and name != 'laya_harness':
+            raise AssertionError('third-party import: ' + fullname)
+sys.meta_path.insert(0, BlockThirdParty())
+from laya_harness import client, hookargv, __main__
+assert 'laya_mlx' not in sys.modules and 'mlx' not in sys.modules
+"""
+    result = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True,
+                            env=env_for(home), timeout=5)
+    assert result.returncode == 0, result.stderr.decode()
+
+
+def test_injected_hook_system_exit_still_exits_zero(configured, home):
+    code = """
+from laya_harness import client, __main__
+def fail(*args):
+    raise SystemExit(2)
+client.run = fail
+__main__._hook(['claude-code', 'UserPromptSubmit'])
+"""
+    result = subprocess.run([sys.executable, "-I", "-c", code], input=json.dumps(human()).encode(),
+                            capture_output=True, env=env_for(home), timeout=5)
+    assert result.returncode == 0 and result.stdout == b""
+    assert "SystemExit: 2" in (home / "client.log").read_text()
+
+
+def test_failed_first_prompt_consumes_model_eligibility_before_inference(configured, home, monkeypatch):
+    replies = iter([("timeout", None), ("ok", served_reply())])
+    counts = []
+
+    def profile(port, prompt, deadline):
+        counts.append(json.loads((home / "sessions" / "sess-1.json").read_text())["prompt_count"])
+        return next(replies)
+
+    monkeypatch.setattr(client.service_client, "profile", profile)
+    for _ in range(2):
+        assert client.run("claude-code", "UserPromptSubmit", json.dumps(human()).encode(), time.monotonic()) is None
+    assert counts == [1, 2]
+    assert [r["status"] for r in rows(home)] == ["timeout", "decided"]
+    assert rows(home)[1]["suppress_reason"] == {"model": "not_first_prompt", "plan": "too_short"}
+
+
+@pytest.mark.parametrize("field, value", [
+    ("app", "other-app"), ("app", None), ("answers", None),
+    ("answers.difficulty.probabilities.quick", True),
+    ("answers.difficulty.probabilities.routine", "0.1"),
+    ("answers.difficulty.probabilities.multi_file", -0.01),
+    ("answers.difficulty.probabilities.architecture", 1.01),
+    ("answers.plan_first.noul", float("nan")),
+    ("answers.parallel.noul", float("inf")),
+    ("usage", []), ("usage.truncated", 1),
+    ("checkpoint.repo", ""), ("checkpoint.revision", None),
+    ("question_set.id", ""), ("question_set.sha256", "g" * 64),
+    ("versions.laya_harness", 2), ("versions.laya_mlx", []),
+    ("input_chars_dropped", True), ("input_chars_dropped", -1),
+    ("input_chars_dropped", 1.5), ("truncated", 0), ("truncated", True),
+])
+def test_malformed_profile_is_error_without_advice_or_spawn(configured, home, monkeypatch, field, value):
+    reply = served_reply()
+    parts = field.split(".")
+    target = reply
+    for part in parts[:-1]:
+        target = target[part]
+    target[parts[-1]] = value
+    monkeypatch.setattr(client.service_client, "_call", lambda *args: (200, json.dumps(reply).encode()))
+    assert client.run("claude-code", "UserPromptSubmit", json.dumps(human()).encode(), time.monotonic()) is None
+    assert [r["status"] for r in rows(home)] == ["error"]
+    assert rows(home)[0]["shown_text"] is None and loads(home) == 0
+    assert not (home / "service.log").exists()
+    assert "unexpected reply" in (home / "client.log").read_text()
+
+
+@pytest.mark.parametrize("field", ["app", "usage", "checkpoint", "question_set", "versions",
+                                   "input_chars_dropped", "truncated"])
+def test_missing_profile_field_is_an_error(configured, home, monkeypatch, field):
+    reply = served_reply()
+    del reply[field]
+    monkeypatch.setattr(client.service_client, "_call", lambda *args: (200, json.dumps(reply).encode()))
+    assert client.run("claude-code", "UserPromptSubmit", json.dumps(human()).encode(), time.monotonic()) is None
+    assert rows(home)[0]["status"] == "error" and not (home / "service.log").exists()
+
+
+def test_excessively_nested_profile_reply_is_error_without_advice(configured, home, monkeypatch):
+    raw = ("[" * 2000 + "0" + "]" * 2000).encode()
+    monkeypatch.setattr(client.service_client, "_call", lambda *args: (200, raw))
+    assert client.run("claude-code", "UserPromptSubmit", json.dumps(human()).encode(), time.monotonic()) is None
+    assert rows(home)[0]["status"] == "error" and not (home / "service.log").exists()
+    assert "unexpected reply" in (home / "client.log").read_text()
+
+
+@pytest.mark.parametrize("body", [{"state": "loading", "reason": None},
+                                   {"app": "other-app", "state": "not_ready", "reason": "broken"},
+                                   {"app": "laya-harness", "state": "other", "reason": "broken"},
+                                   {"app": "laya-harness", "state": "loading"},
+                                   {"app": "laya-harness", "state": "not_ready", "reason": {"why": "broken"}}])
+def test_foreign_or_malformed_503_is_error(configured, home, monkeypatch, body):
+    monkeypatch.setattr(client.service_client, "_call", lambda *args: (503, json.dumps(body).encode()))
+    assert client.run("claude-code", "UserPromptSubmit", json.dumps(human()).encode(), time.monotonic()) is None
+    assert rows(home)[0]["status"] == "error" and not (home / "service.log").exists()
+
+
+@pytest.mark.parametrize("state, reason", [("loading", None), ("not_ready", "broken")])
+def test_identified_503_records_loading_or_not_ready_without_restart(configured, home, monkeypatch, state, reason):
+    reply = {"app": "laya-harness", "state": state, "reason": reason}
+    monkeypatch.setattr(client.service_client, "_call", lambda *args: (503, json.dumps(reply).encode()))
+    assert client.run("claude-code", "UserPromptSubmit", json.dumps(human()).encode(), time.monotonic()) is None
+    assert rows(home)[0]["status"] == state and not (home / "service.log").exists()
+    assert rows(home)[0]["input_chars_dropped"] is None and rows(home)[0]["truncated"] is None
+
+
+@pytest.mark.parametrize("usage_truncated, dropped", [(False, 11), (True, 0), (False, 0)])
+def test_valid_profile_records_character_and_aggregate_truncation(configured, home, monkeypatch,
+                                                                usage_truncated, dropped):
+    usage = {"truncated": usage_truncated, "input_tokens_dropped": 0}
+    reply = served_reply(usage=usage, input_chars_dropped=dropped, truncated=usage_truncated or dropped > 0)
+    reply["versions"]["laya_mlx"] = None
+    monkeypatch.setattr(client.service_client, "_call", lambda *args: (200, json.dumps(reply).encode()))
+    assert client.run("claude-code", "UserPromptSubmit", json.dumps(human()).encode(), time.monotonic())
+    row = rows(home)[0]
+    assert row["status"] == "decided" and row["usage"] == usage
+    assert row["input_chars_dropped"] == dropped
+    assert row["truncated"] is (usage_truncated or dropped > 0)
+
+
+@pytest.mark.parametrize("event", ["UserPromptSubmit", "SessionStart", "PostModelSwitch"])
+def test_session_lock_contention_is_bounded_and_tightens_lock(configured, home, event):
+    lock = home / "sessions" / "sess-1.lock"
+    with lock.open("w") as holder:
+        lock.chmod(0o644)
+        fcntl.flock(holder, fcntl.LOCK_EX)
+        payload = (start_payload("fork") if event == "SessionStart" else
+                   PAYLOADS["post_model_switch"] if event == "PostModelSwitch" else human())
+        result = run_hook(home, event, payload)
+    assert result.stdout == b"" and result.elapsed < 0.5
+    assert [r["status"] for r in rows(home)] == (["error"] if event == "UserPromptSubmit" else [])
+    assert loads(home) == 0 and not (home / "sessions" / "sess-1.json").exists()
+    assert not (home / "service.log").exists()
+    assert stat.S_IMODE(lock.stat().st_mode) == 0o600
+
+
+def test_session_lock_wait_has_exact_fifty_millisecond_budget(configured, home, monkeypatch):
+    clock = FakeClock()
+    monkeypatch.setattr(client.session_state, "time", types.SimpleNamespace(
+        monotonic=clock.monotonic, sleep=clock.sleep))
+
+    def busy(fd, operation):
+        raise BlockingIOError("another hook holds the session")
+
+    monkeypatch.setattr(client.session_state.fcntl, "flock", busy)
+    with pytest.raises(TimeoutError, match="50 ms"):
+        client.run("claude-code", "UserPromptSubmit", json.dumps(human()).encode(), time.monotonic())
+    assert clock.now == pytest.approx(0.05)
+    assert rows(home)[0]["status"] == "error" and loads(home) == 0
+
+
+def test_switch_during_inference_is_preserved_and_row_keeps_submission_snapshot(configured, home, monkeypatch):
+    entered, release = threading.Event(), threading.Event()
+    result, errors = [], []
+
+    def profile(port, prompt, deadline):
+        entered.set()
+        assert release.wait(2)
+        return "ok", served_reply()
+
+    def prompt():
+        try:
+            result.append(client.run("claude-code", "UserPromptSubmit", json.dumps(human()).encode(), time.monotonic()))
+        except BaseException as exc:
+            errors.append(exc)
+
+    monkeypatch.setattr(client.service_client, "profile", profile)
+    worker = threading.Thread(target=prompt)
+    worker.start()
+    try:
+        assert entered.wait(2)
+        client.run("claude-code", "PostModelSwitch", json.dumps(dict(PAYLOADS["post_model_switch"],
+                   to_model="claude-opus-5-5")).encode(), time.monotonic())
+        switched = json.loads((home / "sessions" / "sess-1.json").read_text())
+    finally:
+        release.set()
+        worker.join(2)
+    assert not errors and not worker.is_alive() and result[0]
+    state = json.loads((home / "sessions" / "sess-1.json").read_text())
+    assert (state["model"], state["model_source"], state["switched_at"], state["first_prompt_after_switch_at"]) == (
+        "claude-opus-5-5", "post_model_switch", switched["switched_at"], None)
+    assert state["prompt_count"] == 1 and state["plan_shown"] is True
+    assert rows(home)[0]["session"] == {"model": None, "effort": None, "model_source": None}
+    assert stat.S_IMODE((home / "sessions" / "sess-1.lock").stat().st_mode) == 0o600
+
+
+def test_overlapping_prompts_claim_plan_only_once_and_keep_both_counts(configured, home, monkeypatch):
+    entered, second_entered, release = threading.Event(), threading.Event(), threading.Event()
+    outputs, errors = [], []
+
+    def profile(port, prompt, deadline):
+        (entered if prompt.startswith("first") else second_entered).set()
+        assert release.wait(2)
+        return "ok", served_reply()
+
+    def prompt(text):
+        try:
+            outputs.append(client.run("claude-code", "UserPromptSubmit", json.dumps(human(text)).encode(), time.monotonic()))
+        except BaseException as exc:
+            errors.append(exc)
+
+    monkeypatch.setattr(client.service_client, "profile", profile)
+    workers = [threading.Thread(target=prompt, args=(label + "x" * 300,)) for label in ("first", "second")]
+    workers[0].start()
+    try:
+        assert entered.wait(2)
+        workers[1].start()
+        assert second_entered.wait(2)
+    finally:
+        release.set()
+        for worker in workers:
+            if worker.ident is not None:
+                worker.join(2)
+    assert not errors and not any(worker.is_alive() for worker in workers)
+    lines = [line for out in outputs if out for line in json.loads(out)["systemMessage"].splitlines()]
+    assert sum("Plan mode" in line for line in lines) == 1
+    assert sum("effort fits" in line for line in lines) == 1
+    state = json.loads((home / "sessions" / "sess-1.json").read_text())
+    assert state["prompt_count"] == 2 and state["plan_shown"] is True
+    assert len(rows(home)) == 2
 ```
 
 - [ ] **Step 2: Create the modules as stubs**, so the tests fail on behaviour rather than on an import error (golden rule 4)
@@ -4036,6 +4607,8 @@ Outcomes: "ok", "refused" (nothing bound to the port), "loading", "not_ready", "
 """
 import http.client
 import json
+import math
+import re
 import threading
 import time
 
@@ -4051,6 +4624,13 @@ def _json(raw):
     raise NotImplementedError
 
 def health(port: int, timeout: float):
+    raise NotImplementedError
+
+def _probability(value) -> bool:
+    raise NotImplementedError
+
+def _valid_profile(body: dict) -> bool:
+    """Validate application identity and the fields consumed by the adapter and log (§4.4)."""
     raise NotImplementedError
 
 def profile(port: int, prompt: str, deadline: float):
@@ -4150,7 +4730,7 @@ if __name__ == '__main__':
 
 Run: `.venv/bin/python -m pytest -q tests/test_client_process.py`
 
-Expected: `45 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `95 failed, 1 passed`; failures come from `NotImplementedError` or behavioural assertions against stubbed code. Record the output in the task report. The import-only hook regression passes against stubs; an injected third-party import kills it in the separate mutation check.
 
 - [ ] **Step 4: Implement**, replacing the stubs with exactly this code
 
@@ -4220,6 +4800,8 @@ Outcomes: "ok", "refused" (nothing bound to the port), "loading", "not_ready", "
 
 import http.client
 import json
+import math
+import re
 import threading
 import time
 
@@ -4260,7 +4842,7 @@ def _request(port: int, method: str, path: str, body, timeout: float):
 def _json(raw):
     try:
         value = json.loads(raw)
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
     return value if isinstance(value, dict) else None
 
@@ -4280,6 +4862,51 @@ def health(port: int, timeout: float):
     return "foreign", None
 
 
+def _probability(value) -> bool:
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and 0 <= value <= 1 and math.isfinite(value))
+
+
+def _valid_profile(body: dict) -> bool:
+    """Validate application identity and the fields consumed by the adapter and log (§4.4)."""
+    if body.get("app") != "laya-harness":
+        return False
+    answers, usage = body.get("answers"), body.get("usage")
+    if not isinstance(answers, dict) or not isinstance(usage, dict):
+        return False
+    difficulty = answers.get("difficulty")
+    if not isinstance(difficulty, dict):
+        return False
+    probabilities = difficulty.get("probabilities")
+    if not isinstance(probabilities, dict) or not all(
+        _probability(probabilities.get(key)) for key in ("quick", "routine", "multi_file", "architecture")
+    ):
+        return False
+    for key in ("plan_first", "parallel"):
+        answer = answers.get(key)
+        if not isinstance(answer, dict) or not _probability(answer.get("noul")):
+            return False
+    checkpoint, questions, versions = body.get("checkpoint"), body.get("question_set"), body.get("versions")
+    if not isinstance(checkpoint, dict) or not all(
+        isinstance(checkpoint.get(key), str) and checkpoint[key] for key in ("repo", "revision")
+    ):
+        return False
+    if not isinstance(questions, dict) or not isinstance(questions.get("id"), str) or not questions["id"]:
+        return False
+    digest = questions.get("sha256")
+    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-fA-F]{64}", digest) is None:
+        return False
+    if (not isinstance(versions, dict) or not isinstance(versions.get("laya_harness"), str)
+            or "laya_mlx" not in versions or not isinstance(versions["laya_mlx"], (str, type(None)))):
+        return False
+    dropped = body.get("input_chars_dropped")
+    if not isinstance(dropped, int) or isinstance(dropped, bool) or dropped < 0:
+        return False
+    truncated, token_truncated = body.get("truncated"), usage.get("truncated")
+    return (isinstance(truncated, bool) and isinstance(token_truncated, bool)
+            and truncated == (token_truncated or dropped > 0))
+
+
 def profile(port: int, prompt: str, deadline: float):
     started = time.monotonic()
     try:
@@ -4293,9 +4920,11 @@ def profile(port: int, prompt: str, deadline: float):
     if time.monotonic() - started > deadline:
         return "timeout", None
     body = _json(raw)
-    if status == 200 and body is not None and isinstance(body.get("answers"), dict):
+    if status == 200 and body is not None and _valid_profile(body):
         return "ok", body
-    if status == 503 and body is not None and body.get("state") in ("loading", "not_ready"):
+    if (status == 503 and body is not None and body.get("app") == "laya-harness"
+            and body.get("state") in ("loading", "not_ready") and "reason" in body
+            and isinstance(body["reason"], (str, type(None)))):
         return body["state"], body
     return "error", body
 ```
@@ -4422,8 +5051,8 @@ def _wait_until_ready(port: int, spawned: bool) -> None:
 
 def _session_start(cfg: dict, payload: dict) -> None:
     sid = payload.get("session_id") or ""
-    state = session_state.on_session_start(session_state.load(sid), payload.get("source"))
-    session_state.save(sid, state)
+    with session_state.transaction(sid) as state:
+        session_state.on_session_start(state, payload.get("source"))
     port = config.port(cfg)
     spawned = _ensure_service(cfg, port)
     if payload.get("source") == "startup":
@@ -4432,8 +5061,8 @@ def _session_start(cfg: dict, payload: dict) -> None:
 
 def _model_switch(payload: dict) -> None:
     sid = payload.get("session_id") or ""
-    state = session_state.on_model_switch(session_state.load(sid), payload.get("to_model"), time.time())
-    session_state.save(sid, state)
+    with session_state.transaction(sid) as state:
+        session_state.on_model_switch(state, payload.get("to_model"), time.time())
 
 
 def _base_row(cfg: dict, payload: dict, src: str, now: float) -> dict:
@@ -4454,6 +5083,7 @@ def _base_row(cfg: dict, payload: dict, src: str, now: float) -> dict:
         "suggestion": None,
         "prompt": payload.get("prompt") or "",
         "truncated": None,
+        "input_chars_dropped": None,
         "answers": None,
         "usage": None,
         "mismatches": None,
@@ -4482,16 +5112,16 @@ def _prompt(cfg: dict, payload: dict, started: float, logged: list):
     prompt = payload.get("prompt") or ""
     src = source.classify(payload)
     sid = payload.get("session_id") or ""
-    state = session_state.load(sid)
     row = _base_row(cfg, payload, src, now)
     if src != "human":
+        state = session_state.load(sid)
         row.update(status="skipped", suppress_reason={"model": "not_human", "plan": "not_human"})
         return _finish(row, state, started, None, logged)
 
-    first_human = state["prompt_count"] == 0
-    reply = transcript.last_assistant(payload.get("transcript_path")) if state["prompt_count"] >= 1 else None
-    state = session_state.on_human_prompt(state, now, reply)
-    session_state.save(sid, state)
+    with session_state.transaction(sid) as state:
+        first_human = state["prompt_count"] == 0
+        reply = transcript.last_assistant(payload.get("transcript_path")) if state["prompt_count"] >= 1 else None
+        session_state.on_human_prompt(state, now, reply)
 
     port = config.port(cfg)
     outcome, body = service_client.profile(port, prompt, PROFILE_DEADLINE)
@@ -4513,40 +5143,38 @@ def _prompt(cfg: dict, payload: dict, started: float, logged: list):
         return _finish(row, state, started, None, logged)
 
     questions = resources.questions()
-    decision = adapter_claude_code.decide(
-        body["answers"], first_human=first_human, plan_shown=state["plan_shown"],
-        permission_mode=payload.get("permission_mode"), prompt=prompt, display=questions["display"],
-        catalog=resources.catalog(), fit=resources.fit(), session=state)
-    reasons = dict(decision["suppress_reason"])
-    if cfg["mode"] == "log-only":
-        for key, line in decision["line_for"].items():
-            if line:
-                reasons[key] = "log_only"
-        shown = []
-    else:
-        shown = decision["lines"]
-        if decision["line_for"]["model"]:
-            state["model_line_shown"] = True
-        if decision["line_for"]["plan"]:
-            state["plan_shown"] = True
+    with session_state.transaction(sid) as latest:
+        decision = adapter_claude_code.decide(
+            body["answers"], first_human=first_human, plan_shown=latest["plan_shown"],
+            permission_mode=payload.get("permission_mode"), prompt=prompt, display=questions["display"],
+            catalog=resources.catalog(), fit=resources.fit(), session=state)
+        reasons = dict(decision["suppress_reason"])
+        if cfg["mode"] == "log-only":
+            for key, line in decision["line_for"].items():
+                if line:
+                    reasons[key] = "log_only"
+            shown = []
+        else:
+            shown = decision["lines"]
 
-    usage = body.get("usage") or {}
-    row.update(shown_text="\n".join(shown) or None, suppress_reason=reasons,
-               suggestion=decision["suggestion"], mismatches=decision["mismatches"],
-               answers=body["answers"], usage=usage, truncated=usage.get("truncated"),
-               checkpoint=body.get("checkpoint"))
-    versions = body.get("versions") or {}
-    row["versions"].update(laya_mlx=versions.get("laya_mlx"), service_laya_harness=versions.get("laya_harness"))
-    served = body.get("question_set")
-    if isinstance(served, dict):  # the row records what produced the answers (spec §4.10, §5)
+        row.update(shown_text="\n".join(shown) or None, suppress_reason=reasons,
+                   suggestion=decision["suggestion"], mismatches=decision["mismatches"],
+                   answers=body["answers"], usage=body["usage"], truncated=body["truncated"],
+                   input_chars_dropped=body["input_chars_dropped"], checkpoint=body["checkpoint"])
+        versions = body["versions"]
+        row["versions"].update(laya_mlx=versions["laya_mlx"], service_laya_harness=versions["laya_harness"])
+        served = body["question_set"]  # the row records what produced the answers (spec §4.10, §5)
         if served != row["question_set"]:
             decision_log.problem(f"the service runs question set {served} but the client has "
                                  f"{row['question_set']}: run laya-harness stop")
         row["question_set"] = served
-    out = json.dumps({"systemMessage": "\n".join(shown)}, ensure_ascii=False) if shown else None
-    out = _finish(row, state, started, out, logged)
-    if shown:
-        session_state.save(sid, state)  # after the row: a failed write never marks a line as shown
+        out = json.dumps({"systemMessage": "\n".join(shown)}, ensure_ascii=False) if shown else None
+        out = _finish(row, state, started, out, logged)
+        if shown:  # after the row: a failed write never marks a line as shown
+            if decision["line_for"]["model"]:
+                latest["model_line_shown"] = True
+            if decision["line_for"]["plan"]:
+                latest["plan_shown"] = True
     return out
 ```
 
@@ -4581,6 +5209,7 @@ def _hook(args: list) -> None:
         try:
             paths.ensure_home()
             log_fd = os.open(paths.client_log(), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            os.fchmod(log_fd, 0o600)
             os.dup2(log_fd, 2)
         except BaseException:  # noqa: BLE001
             pass
@@ -4620,11 +5249,11 @@ if __name__ == "__main__":
 
 Run: `.venv/bin/python -m pytest -q tests/test_client_process.py`
 
-Expected: `45 passed`.
+Expected: `96 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `229 passed, 1 deselected`.
+Expected: `314 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -4649,7 +5278,7 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
   `unknown_models() -> set`, `status(out=None) -> int`, `stop(out=None) -> int`,
   `set_mode(value, out=None) -> int`, `main(argv) -> int`.
 
-> Revised after review round 1 (spec 83e1126): `stop` exits 1 and stops nothing when the port does not answer as laya-harness, and never signals an invalid pid; `status` reads the log line by line and skips rows it cannot read; `mode` refuses other values; `setup` prints the download size and source first; and 16 more tests pin every status outcome, the reuse sha check, the download arguments and the hook self-check (the two stop tests now stop their service in a `finally`). `setup` is the only network path, and the tests inject the downloader, so no test touches the network. From the Task 2 review: `setup` reuses a checkpoint only when every required file is present and the weights match, and fails if a download stays incomplete (spec §4.5). Known limitation, deferred from review of Task 1 (P3-9): a hand-edited invalid `mode` in config.json makes `laya-harness mode` and `status` raise; the hooks still fail silent, and the fix is to edit the file by hand.
+> Revised after review round 1 (spec 83e1126): `stop` exits 1 and stops nothing when the port does not answer as laya-harness, and never signals an invalid pid; `status` reads the log line by line and skips rows it cannot read; `mode` refuses other values; `setup` prints the download size and source first; and 16 more tests pin every status outcome, the reuse sha check, the download arguments and the hook self-check (the two stop tests now stop their service in a `finally`). `setup` is the only network path, and the tests inject the downloader, so no test touches the network. From the Task 2 review: `setup` reuses a checkpoint only when every required file is present and the weights match, and fails if a download stays incomplete (spec §4.5). Known limitation, deferred from review of Task 1 (P3-9): a hand-edited invalid `mode` in config.json makes `laya-harness mode` and `status` raise; the hooks still fail silent, and the fix is to edit the file by hand. The accepted Codex review adds mutation-sensitive tests for setup preserving port/mode, its announcement preceding the injected downloader, and stdlib-only imports on the shared status/stop/mode paths. No command implementation changes.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4659,13 +5288,14 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
 import hashlib
 import io
 import json
+import subprocess
 import sys
 
 import pytest
 
 from conftest import write_config
 from laya_harness import commands, config, hookargv, resources
-from procs import start_service, stop, wait_health
+from procs import env_for, start_service, stop, wait_health
 
 FAKE_WEIGHTS = b"not really weights"
 
@@ -4713,6 +5343,29 @@ def test_setup_downloads_writes_config_and_prints_snippet(home, fake_checkpoint)
     assert not (home / "sessions" / f"{commands.SETUP_SESSION}.json").exists()
 
 
+def test_setup_rerun_preserves_user_port_and_mode(home, fake_checkpoint):
+    config.save({"port": 5555, "mode": "log-only"})
+    assert commands.setup(download=writer(FAKE_WEIGHTS), out=io.StringIO()) == 0
+    cfg = config.load()
+    assert (cfg["port"], cfg["mode"]) == (5555, "log-only")
+
+
+def test_setup_announces_size_source_and_target_before_download(home, fake_checkpoint):
+    out = io.StringIO()
+    calls = []
+
+    def download(ck, model_dir):
+        notice = out.getvalue()
+        assert "about 807 MB" in notice
+        assert f"{ck['repo']}@{ck['revision'][:12]}" in notice
+        assert str(model_dir) in notice
+        calls.append(model_dir)
+        place(model_dir, FAKE_WEIGHTS)
+
+    assert commands.setup(download=download, out=out) == 0
+    assert calls == [home / "models" / f"laya-mlx@{fake_checkpoint['revision']}"]
+
+
 def test_setup_reuses_a_complete_matching_checkpoint(home, fake_checkpoint):
     model_dir = home / "models" / f"laya-mlx@{fake_checkpoint['revision']}"
     place(model_dir, FAKE_WEIGHTS)
@@ -4720,6 +5373,30 @@ def test_setup_reuses_a_complete_matching_checkpoint(home, fake_checkpoint):
     out = io.StringIO()
     assert commands.setup(download=download, out=out) == 0
     assert download.calls == [] and "already in place" in out.getvalue()
+
+
+@pytest.mark.parametrize("argv, output", [
+    (["status"], b"laya-harness: down"),
+    (["stop"], b"laya-harness: not running\n"),
+    (["mode", "off"], b"mode: off\n"),
+])
+def test_shared_command_paths_import_only_stdlib(configured, home, argv, output):
+    probe = """import runpy, sys
+before = set(sys.modules)
+sys.argv = ['laya_harness'] + sys.argv[1:]
+try:
+    runpy.run_module('laya_harness', run_name='__main__')
+except SystemExit as exc:
+    rc = exc.code
+roots = {name.partition('.')[0] for name in set(sys.modules) - before}
+unexpected = roots - set(sys.stdlib_module_names) - {'laya_harness'}
+sys.stderr.write(' '.join(sorted(unexpected)) or 'stdlib only')
+sys.exit(rc if not unexpected else 1)
+"""
+    result = subprocess.run([sys.executable, "-I", "-c", probe, *argv], capture_output=True,
+                            env=env_for(home), timeout=3)
+    assert result.returncode == 0 and result.stderr == b"stdlib only"
+    assert result.stdout.startswith(output)
 
 
 def test_setup_repairs_a_checkpoint_missing_its_tokenizer(home, fake_checkpoint):
@@ -4919,7 +5596,7 @@ def main(argv) -> int:
 
 Run: `.venv/bin/python -m pytest -q tests/test_commands.py`
 
-Expected: `26 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `31 failed`; failures come from `NotImplementedError` or behavioural assertions against stubbed code. Record the output in the task report.
 
 - [ ] **Step 4: Implement**, replacing the stubs with exactly this code
 
@@ -5097,11 +5774,11 @@ with:
 
 Run: `.venv/bin/python -m pytest -q tests/test_commands.py`
 
-Expected: `26 passed`.
+Expected: `31 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `255 passed, 1 deselected`.
+Expected: `345 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -5185,7 +5862,7 @@ def test_real_service_answers_the_stage0_questions(configured, home):
   Add `laya-harness setup | status | stop | mode` to the gate profile with the results you observed.
 
 - [ ] **Step 3 (controller): Final gates.** Run `.venv/bin/python -m pytest -q` (expected
-  `255 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
+  `345 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
   Contract-drift check: `git status --porcelain -- docs/` must be empty. The controller commits every
   doc change on its own before code, so an uncommitted doc edit can only have come from a subagent.
 
