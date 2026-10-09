@@ -214,7 +214,11 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
   at once and `laya-harness stop` can still find it. On idle exit the service first closes its
   listener, so a later connect is refused and the client starts a fresh service (§4.3); it then
   finishes every request it has already accepted, and exits 0. A connection that sends nothing
-  is dropped after 5 s, so it cannot keep the model resident.
+  is dropped after 5 s, so it cannot keep the model resident. (The 5 s applies to each read: a
+  local process that trickles a byte every few seconds can hold the exit open. Same-user
+  processes are out of scope, and a browser cannot do it; see §11.)
+- A client that gives up before its reply (its 1.5 s deadline) is routine: the broken pipe is
+  not logged. Other handler errors still go to `service.log` with a traceback.
 - A **fake-model mode** (set in `config.json`) returns fixed answers without importing
   laya_mlx. Tests and the first acceptance step use it.
 
@@ -675,6 +679,7 @@ acceptance):
 | Stage 5 | CONTEXT advice using SessionStart's `prompt_cache_likely_expired`, `seconds_since_last_response` and `context_tokens`, and PostModelSwitch's `prompt_cache_warm` and `estimated_cache_write_usd` (all observed in check 4). |
 | Stage 2 | The idle-timeout length, or a launchd agent, chosen from the cold-start share recorded in acceptance step 4 and from memory pressure (F14). |
 | Stage 2 | A crash marker, so a load that kills the process (a native abort, a jetsam kill) is not retried on every prompt (§5). |
+| Stage 2 | A per-connection deadline, so a local process trickling bytes cannot hold the service's idle exit open (§4.4). |
 
 ## Appendix A — Decisions
 
