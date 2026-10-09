@@ -75,9 +75,22 @@ are unaffected.
 - **The install diff (spec §10).** It is shown to the user and applied only with their
   approval.
 
-**Commands that do not exist yet** (`laya-harness setup | status | stop | mode`, and the hook
-argv from spec §4.2) become gates only after the controller has executed them, when the task
-that creates them lands. Until they are recorded here with their result, they are not gates.
+**laya-harness commands (controller only; recorded 2026-10-09, stage-0 Task 8 Step 2).**
+The console script was registered offline with
+`.venv/bin/python -m pip install --no-index --no-build-isolation -e ".[dev]"` (exit 0; the
+venv already holds setuptools 84.0.0 and pytest, so nothing is downloaded).
+
+```bash
+.venv/bin/laya-harness status   # read-only: one line, service state · mode · checkpoint · logs
+.venv/bin/laya-harness stop     # exit 0: stopped or not running; exit 1: port not laya-harness, nothing stopped
+.venv/bin/laya-harness mode show|log-only|off
+.venv/bin/laya-harness setup    # reuses the checksummed checkpoint; downloads only with the user's approval
+```
+
+Executed 2026-10-09: `status` exit 0, printing
+`laya-harness: down · mode show · checkpoint not set up · logs /Users/thunderstruck/.laya-harness`.
+`setup`, `stop` and `mode` are run at Task 8 Steps 4–5, each recorded with its result there.
+Subagents never run these commands: they act on the real `~/.laya-harness`.
 
 ## Stack reset
 
