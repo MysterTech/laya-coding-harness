@@ -167,14 +167,17 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
 
 **Startup order:**
 
-1. Using the standard library only: read `config.json`, then bind `127.0.0.1:<port>`. If the
-   port is taken, exit 0. **The bind is the single-instance lock,** so two sessions can never
-   load the model twice.
+1. Using the standard library only: read `config.json`, check that `idle_seconds` is a positive
+   number (anything else, NaN included, exits 1 before binding, so a broken watcher can never
+   keep the model resident), then bind `127.0.0.1:<port>`. If the port is taken, exit 0. **The
+   bind is the single-instance lock,** so two sessions can never load the model twice.
 2. Serve `GET /v1/health` from a thread. It returns
    `{"app": "laya-harness", "version", "pid", "state": "loading|ready|not_ready", "reason"}`.
    Until the model is ready, `POST /v1/profile` answers 503 `{"state": "loading"}`.
 3. Set `HF_HUB_OFFLINE=1`, import laya_mlx, and load the checkpoint **from the absolute local
-   directory in `config.json`, never by repo id.**
+   directory in `config.json`, never by repo id.** If `config.json` records a revision that is
+   not the pinned one (the pin was bumped but setup not re-run), the load fails with
+   `run laya-harness setup`, so no row is ever labelled with a checkpoint that was not loaded.
    - Load with `batch_size=1` and `pad_to_multiple=128`, then set `agent.cfg["max_len"] = 512`.
      Check 6 showed why: batching the three questions raised MLX peak memory to 1.37 GiB,
      against 1.17 GiB one at a time at the same speed; and without padding, the first prompt of
@@ -197,11 +200,21 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
   inference runs.
 - `POST /v1/profile` takes `{"prompt": str}`. It returns Laya's raw `answers` and `usage`,
   plus `checkpoint` (repo and SHA), `question_set` (id and sha256), and the laya-mlx and
-  laya-harness versions.
+  laya-harness versions. If inference raises, the reply is 500 `{"error": <exception class>}`
+  with one line in `service.log`, and the service stays `ready`.
+- The real predictor passes at most the first 65,536 characters of a prompt to laya-mlx, far
+  more than 512 tokens of any text, so a huge paste cannot hold the interpreter lock for
+  seconds while it is tokenized. `truncated` is unaffected.
 - The questions file and config are read once at startup. **After changing code, config or
   questions, run `laya-harness stop`.** Version checks between client and service are deferred
   (§11).
-- Idle time is counted from the end of the last request. The service never exits mid-request.
+- **Idle exit.** Idle time is counted from the end of the last health or profile request, or
+  from the end of loading if that is later. A rejected request (400, 403, 404, 415) does not
+  count. The service never idles out while `loading`, so a hung load keeps answering `loading`
+  at once and `laya-harness stop` can still find it. On idle exit the service first closes its
+  listener, so a later connect is refused and the client starts a fresh service (§4.3); it then
+  finishes every request it has already accepted, and exits 0. A connection that sends nothing
+  is dropped after 5 s, so it cannot keep the model resident.
 - A **fake-model mode** (set in `config.json`) returns fixed answers without importing
   laya_mlx. Tests and the first acceptance step use it.
 
@@ -504,7 +517,9 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
 | Reply over 1.5 s, or unexpected | Nothing shown (`timeout` / `error`). |
 | Port held by something that is not laya, or a listener that never replies | No service started, nothing shown, one line in `client.log`. |
 | Weights missing or corrupt, or load fails | `not_ready` with a reason; the service stays bound; nothing is downloaded and nothing restarts in a loop. |
-| Prompt longer than 512 tokens | Laya keeps the beginning; the row is marked `truncated`. |
+| Inference raises | 500 from the service, nothing shown (`error`); the service stays `ready`. |
+| A load that kills the process (a native abort, a jetsam kill) | The port is freed, so the next prompt starts another load. Known limitation; a crash marker is deferred (§11). |
+| Prompt longer than 512 tokens | Laya keeps the beginning (the service passes at most 65,536 characters); the row is marked `truncated`. |
 | Stale service after a code or config change | `laya-harness stop`. Every row records the versions that produced it. |
 
 **Explicit hook timeouts:** SessionStart 8 s (it may wait 4 s, §4.3), UserPromptSubmit 3 s, PostModelSwitch 3 s. The service listens on 127.0.0.1 only. `~/.laya-harness` is mode 0700.
@@ -541,12 +556,24 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
     `ready`; gives up after 4 s; returns at once on `not_ready`, a foreign listener, an error
     reply, a first-poll timeout and mode `off`; never waits for `resume`, `clear`, `compact`
     or `fork`.
-- **Service (fake model, no weights):** endpoints; the Host, Origin and Content-Type checks;
-  N services started at once with a fake 3 s load, giving exactly one load while the others
-  exit 0 within about 0.5 s without importing laya_mlx; idle exit on a short timer, never
-  mid-request; a failing or corrupt load giving `not_ready` while staying bound, with several
-  prompts in a row causing at most one spawn; a missing model directory never triggering a
-  download (`snapshot_download` patched to fail the test if called).
+- **Service (fake model, no weights):**
+  - endpoints, with every field of health and profile; the Host, Origin and Content-Type checks
+    on GET and POST; bad bodies (400) and unknown paths (404); a bind to 127.0.0.1 only;
+  - N services started at once with a fake 3 s load, giving exactly one load while the others
+    exit 0 within 1 s (measured about 0.1 s); a service whose port is taken, and a fake-mode
+    service, import nothing outside the standard library (no laya_mlx, no mlx);
+  - one MLX lock, with health answered while inference runs; nothing written to stdout, ready
+    or not ready; a predict failure answered 500 with the service still `ready`;
+  - idle exit on a short timer: never mid-request, never while loading, counted from the last
+    health or profile request; refusing rather than resetting a late connect; finishing a
+    request already accepted; not held open by a silent connection; a bad `idle_seconds`
+    exiting before any load;
+  - a failing or corrupt load giving `not_ready` while staying bound, loading once over several
+    prompts, then idling out;
+  - the real predictor with a stand-in laya_mlx: `HF_HUB_OFFLINE` set before the import, the
+    check-6 load arguments, `max_len`, every warm-up length, the temperatures on stderr, the
+    version, the prompt cap and a revision mismatch; a missing model directory never
+    triggering a download (`snapshot_download` patched to fail the test if called).
 - **Real model:** check 6 only, run on request.
 
 ## 7. Check first (throwaway, before writing anything to keep)
@@ -647,6 +674,7 @@ acceptance):
 | Stage 4 | MODEL and REASONING as separate suggestions compared with the current setting (known from the second prompt on): effort on later prompts, model after clear, compact or resume; harness notes for MODE and PARALLELISM; prompt-stopping never fires on non-human turns; calibrated wording for scores. |
 | Stage 5 | CONTEXT advice using SessionStart's `prompt_cache_likely_expired`, `seconds_since_last_response` and `context_tokens`, and PostModelSwitch's `prompt_cache_warm` and `estimated_cache_write_usd` (all observed in check 4). |
 | Stage 2 | The idle-timeout length, or a launchd agent, chosen from the cold-start share recorded in acceptance step 4 and from memory pressure (F14). |
+| Stage 2 | A crash marker, so a load that kills the process (a native abort, a jetsam kill) is not retried on every prompt (§5). |
 
 ## Appendix A — Decisions
 
