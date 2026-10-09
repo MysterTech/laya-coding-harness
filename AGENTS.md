@@ -29,12 +29,19 @@ laya-harness is a local "System 1" advisor for Claude Code. A hook sends each pr
   - Every task's cumulative GREEN and stub RED was replayed. Task 6 has one import-only test that passes stubs; a separate third-party-import mutation proves its sensitivity. The other accepted P2 tests also caught deliberate mutations.
   - **Model exception for this fix round:** the user authorized Codex implementers and an independent Codex reviewer because Claude limits were exhausted. This does not permanently change the signed-off model routing.
 - **Per-task snapshots:** kept in `refs/laywip/stage0/*`; list them with `git for-each-ref refs/laywip`. Diff any two to see a review round.
-- **Not done yet: Task 8 Steps 2–9.** These are: console-script install, final gates, setup, acceptance with the user, visual QA, the single commit, and the hook install. **Stop before Task 8 Step 2**, as the user instructed. The real-model gate was not rerun in this fix round. Visual review is N/A for the fixes because the adapter and copy are unchanged; UI acceptance remains pending.
+- **Task 8 progress (Claude, 2026-10-09), each checked by an independent run:**
+  - **Fix round re-verified:** all 34 file blocks match the plan (`drift.py` 1–8; Task 6 shows only the expected `__main__.py` drift). The plan regenerates byte for byte. The suite gives `345 passed, 1 deselected`; `-m real_model` gives `1 passed`.
+  - **Step 2 done:** an offline editable install, per the user's choice and plan commit `11c03e8`: `pip install --no-index --no-build-isolation -e ".[dev]"`. `.venv/bin/laya-harness status` printed the expected line. Recorded in the gate profile (`33cf522`).
+  - **Step 3 done:** both gates above, and `git status --porcelain -- docs/` is empty.
+  - **Step 4, half done:** the cached weights were verified (complete, and the sha256 matches the pin), then `laya-harness setup` ran. It printed "checkpoint already in place" and the snippet, the hook self-check passed, and it wrote `~/.laya-harness/config.json` (0600). `status` now shows `down · mode show · checkpoint 047678560251`.
+  - **Not yet done:** writing the snippet's `hooks` object into the repo's `.claude/settings.local.json` (git-ignored, and it does not exist yet). This needs the user's explicit yes first. When asked, they chose to continue in Codex instead of answering.
+  - **Note:** `~/.laya-harness/x/` is a stray directory dated 2026-10-08 14:27, probably left by an early probe. Leave it unless the user asks you to remove it.
+- **Not done yet: Task 8 Steps 4 (the settings file) to 9:** acceptance with the user, visual QA, the single commit, and the hook install.
 - **Non-blocking review items** are listed in `.workbench/deferred_p3.md` and in `.workbench/codex-stage0-review-prompt.md`.
 
 ## Next steps, in order
 
-1. **The accepted Codex fix round is complete.** Keep the implementation uncommitted and Task 8 Step 2 on hold until the user resumes that work.
+1. **Resume Task 8 at Step 4's settings file.** Ask the user to approve creating `.claude/settings.local.json` with exactly the `hooks` object from `.venv/bin/laya-harness setup` (or from `hookargv.settings_snippet`). Then do Step 5: acceptance, with fake mode first. Give the user written UI steps and read `~/.laya-harness/decisions.jsonl`, `client.log` and `service.log`. Run `laya-harness stop` before every config, mode or code change. Then Steps 6–9.
 2. **Any further accepted fix round** uses the same docs-first procedure:
    1. edit the spec and commit it;
    2. change the code and tests in `.workbench/plan-verify/` and run them there: GREEN, plus RED against the stubs in `.workbench/plan-stubs/`;
