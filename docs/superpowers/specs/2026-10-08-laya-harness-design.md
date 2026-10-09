@@ -137,7 +137,9 @@ The service runs laya-mlx, answers three questions per prompt, and exits after 1
   exits 0**. An exit code of 2 would block the prompt in every project.
 - **stdout is empty, or exactly one JSON object `{"systemMessage": "..."}`,** written last.
   Anything else on stdout becomes context for Claude. SessionStart always prints nothing.
-- Diagnostics go to `~/.laya-harness/client.log`, one line per problem.
+- Diagnostics go to `~/.laya-harness/client.log`, one line per problem. The hook creates this
+  file with mode 0600 and tightens an existing file to 0600 before redirecting stderr, even
+  when the hook is quiet or mode is `off`.
 - It calls the service with a **1.5 s total deadline**, enforced on the wall clock: a listener
   that trickles bytes cannot stretch it. Check 6 confirms or adjusts this.
 - stdout is also redirected at the file-descriptor level for the hook's run, so nothing written
@@ -182,13 +184,15 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
 
 **Startup order:**
 
-1. Using the standard library only: read `config.json`, check that `idle_seconds` is a positive
-   number (anything else, NaN included, exits 1 before binding, so a broken watcher can never
+1. Using the standard library only: read `config.json`, check that `idle_seconds` is a finite,
+   positive number (booleans, numeric strings, NaN and infinity are refused; anything else exits
+   1 before binding, so a broken watcher can never
    keep the model resident), then bind `127.0.0.1:<port>`. If the port is taken, exit 0. **The
    bind is the single-instance lock,** so two sessions can never load the model twice.
 2. Serve `GET /v1/health` from a thread. It returns
    `{"app": "laya-harness", "version", "pid", "state": "loading|ready|not_ready", "reason"}`.
-   Until the model is ready, `POST /v1/profile` answers 503 `{"state": "loading"}`.
+   Until the model is ready, `POST /v1/profile` answers 503 with `app: "laya-harness"`,
+   `state: "loading"` and `reason`.
 3. Set `HF_HUB_OFFLINE=1`, import laya_mlx, and load the checkpoint **from the absolute local
    directory in `config.json`, never by repo id.** If `config.json` records a revision that is
    not the pinned one (the pin was bumped but setup not re-run), the load fails with
@@ -208,23 +212,44 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
 **Requests:**
 
 - The service rejects any request whose `Host` is not `127.0.0.1:<port>` or `localhost:<port>`,
-  any request with an `Origin` header, and any POST that is not `application/json`. This
+  any request with an `Origin` header, and any POST whose parsed media type is not exactly
+  `application/json` (parameters such as `charset=utf-8` are allowed; `application/jsonp` and
+  `application/json-garbage` are not). This
   blocks browsers reaching localhost through CSRF or DNS rebinding. Other processes run by the
   same user are out of scope, since they can read the log anyway.
 - All MLX work runs under **one lock**. Health checks are answered on a separate thread while
   inference runs.
-- `POST /v1/profile` takes `{"prompt": str}`. It returns Laya's raw `answers` and `usage`,
-  plus `checkpoint` (repo and SHA), `question_set` (id and sha256), and the laya-mlx and
-  laya-harness versions. If inference raises, the reply is 500 `{"error": <exception class>}`
+- `POST /v1/profile` takes `{"prompt": str}`. A successful reply identifies
+  `app: "laya-harness"` and returns Laya's raw `answers` and `usage`, plus `checkpoint`
+  (nonempty repo and revision strings), `question_set` (nonempty id and a 64-character hex
+  sha256), and `versions` (the laya-harness version string and the laya-mlx version string,
+  or null for the fake predictor). It also returns `input_chars_dropped`, a nonnegative
+  integer, and `truncated`, a boolean covering both character and token truncation.
+  The client accepts a 200 reply only when all these fields have their expected shapes:
+  the four difficulty probabilities and both nouls are finite numbers in [0, 1],
+  `usage.truncated` is a boolean, and the aggregate `truncated` agrees with that flag or a
+  positive character-drop count. Otherwise it records `error`, logs a diagnostic, shows
+  nothing and starts nothing. A loading/not-ready 503 must also identify
+  `app: "laya-harness"`; a foreign or malformed 503 is an error. This is application
+  identification, not version negotiation or authentication against same-user processes.
+  If inference raises, the reply is 500 `{"error": <exception class>}`
   with one line in `service.log`, and the service stays `ready`.
-- The real predictor passes at most the first 65,536 characters of a prompt to laya-mlx, far
-  more than 512 tokens of any text, so a huge paste cannot hold the interpreter lock for
-  seconds while it is tokenized. `truncated` is unaffected.
-- The questions file and config are read once at startup. **After changing code, config or
+- The real predictor passes at most the first 65,536 characters of a prompt to laya-mlx,
+  so a huge paste cannot hold the interpreter lock for seconds while it is tokenized.
+  Compressible text can fill that many characters with fewer than 512 tokens: character
+  truncation is therefore recorded separately as `input_chars_dropped`. The service's
+  aggregate `truncated` is true when that count is positive or Laya's `usage.truncated` is
+  true. Raw `usage` is retained unchanged. The fake predictor drops zero characters.
+- The questions file and config are read once at startup. The question definitions, id and
+  sha256 all come from one read of the same bytes; the predictor receives that snapshot
+  rather than rereading the file. An edit during startup cannot label answers from new
+  instructions with the old hash. **After changing code, config or
   questions, run `laya-harness stop`.** Version checks between client and service are deferred
   (§11).
 - **Idle exit.** Idle time is counted from the end of the last health or profile request, or
-  from the end of loading if that is later. A rejected request (400, 403, 404, 415) does not
+  from the end of loading if that is later. A valid health request remains in flight until
+  its response has finished, just as a valid profile request does; response generation must
+  not reset the idle clock early. A rejected request (400, 403, 404, 415) does not
   count. The service never idles out while `loading`, so a hung load keeps answering `loading`
   at once and `laya-harness stop` can still find it. On idle exit the service first closes its
   listener, so a later connect is refused and the client starts a fresh service (§4.3); it then
@@ -272,6 +297,17 @@ The client owns session state, one file per session:
 `{model, effort, model_source, switched_at, first_prompt_after_switch_at, prompt_count,
 model_line_shown, plan_shown, updated}`.
 
+Hooks for one session may overlap. Each mutation uses a per-session read-modify-write
+transaction, with a separate lock file in `sessions/` created/tightened to mode 0600.
+Acquiring the lock waits at most 50 ms; contention beyond that follows the normal client
+error path rather than delaying the prompt indefinitely. No session lock is held while
+calling the service. SessionStart resets, model switches and pre-inference human-prompt
+updates use the same transaction mechanism. After inference, shown flags are merged into
+the latest disk state, preserving any intervening switch, counters and timestamps. The
+final decision checks the latest `plan_shown` under the transaction before writing its row
+and saving shown flags, so overlapping eligible prompts cannot both claim the plan line.
+The row's model/effort snapshot remains the state known when that prompt was submitted.
+
 The desktop app gives hooks **no model or effort on a session's first prompt** (Appendix C), so
 both start unknown. They are filled in for logging as they become visible:
 
@@ -294,7 +330,8 @@ both start unknown. They are filled in for logging as they become visible:
   above handles that.
 - A session file that cannot be read as a JSON object with the expected field types starts again
   from the defaults, so one corrupt file cannot turn every later prompt in that session into an
-  error.
+  error. Parser recursion errors from excessive JSON nesting count as corruption. Such a
+  transcript row is skipped, so it cannot disable every later human prompt either.
 - The `startup` and `fork` sources reset `prompt_count`, `model_line_shown` and `plan_shown`;
   `resume`, `clear` and `compact` leave them alone. On each **human** prompt (§4.7), the
   client increments `prompt_count` before calling the service.
@@ -313,7 +350,8 @@ the hook input:
 | human | everything else |
 
 The prefixes are checked first, so a prefixed prompt is classified by its prefix even when it
-also carries `agent_id`.
+also carries `agent_id`. Presence means the key exists, including a null, empty-string,
+false or zero value; it does not mean a truthy value.
 
 Non-human prompts are logged with their source and are **not sent to the service** (status
 `skipped`), which saves the inference for turns that never show a line. They never show a line
@@ -399,7 +437,7 @@ line as shown that the user did not see.
 |---|---|
 | Keys | `schema_version`, `ts`, `session_id`, `prompt_id`, `transcript_path`, `cwd`, `source` |
 | Outcome | `status`: decided, skipped (non-human prompt, not sent), started_service, loading, not_ready, timeout or error; `mode`; `shown_text`, and `suppress_reason` recorded per line as `{model, plan}`, each one of: below_threshold, not_first_prompt, not_human, plan_mode, already_shown, too_short, no_fit or log_only. When several apply, the first in this order is recorded: model line not_first_prompt, below_threshold, no_fit; plan line below_threshold, plan_mode, too_short, already_shown; `suggestion` (model id, effort, class) |
-| Input | `prompt`, `truncated` (from Laya's `usage`) |
+| Input | `prompt`, `input_chars_dropped` (from the service), `truncated` (the service's aggregate character-or-token flag); truncation fields are null when no profile was obtained |
 | Laya output | the raw `answers` and `usage` |
 | Versions | `checkpoint` (repo, SHA), `question_set` (id, sha256, as reported by the service when it answered), `laya_mlx`, `laya_harness` (the client's) and `service_laya_harness` (the service's, when it answered), `adapter_rules`, `catalog` (sha256 of the catalog and the fit table). A question set that differs between client and service also gets a line in `client.log`. |
 | Session state | `model`, `effort` and `model_source` as known at that prompt (§4.6), `permission_mode` |
@@ -568,7 +606,10 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
   - switch precedence (regression): a `PostModelSwitch` to model B, then a transcript whose last
     reply is still model A, keeps B; a later reply on B, timestamped after the first prompt
     submitted after the switch, is accepted; a reply on A from the turn that was in flight
-    during the switch is ignored;
+    during the switch is ignored; a switch during inference survives the prompt's final
+    shown-flag update; overlapping prompt transactions preserve counters and claim the plan
+    line at most once; lock contention is bounded; deeply nested session JSON recovers and
+    deeply nested transcript rows are skipped;
   - the catalog and fit table: the cheapest allowed option wins, ties go to the newest; Fable is
     never suggested, even if listed; a disallowed or not-in-picker model is skipped; an older
     version is chosen only when the fit table names it and nothing cheaper fits; a model with no
@@ -577,6 +618,9 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
     session-state updates from `PostModelSwitch` and from the transcript, including a missing
     transcript; the question-file format; assembling a profile; SessionStart and
     PostModelSwitch print nothing.
+  - a conflicting port environment variable does not override config; a present false-valued
+    `agent_id` is a subagent, with prefix precedence unchanged; setup preserves user port/mode
+    on rerun and announces size, source and target before invoking its injected downloader.
 - **Client, process-level.** These run the exact registered argv from the shared function,
   with a temporary `LAYA_HARNESS_HOME` and a free port. Cases: bad event name, garbage stdin,
   service down, slow reply, unexpected reply, a foreign listener returning junk, a listener that
@@ -589,9 +633,16 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
     `ready`; gives up after 4 s; returns at once on `not_ready`, a foreign listener, an error
     reply, a first-poll timeout and mode `off`; never waits for `resume`, `clear`, `compact`
     or `fork`.
+  - isolated import probes for the hook and shared command path prove standard-library-only
+    imports; an injected `SystemExit(2)` still gives hook exit 0 and no stdout; an existing
+    0644 client log becomes 0600 on a quiet hook; foreign JSON profiles and malformed answer,
+    provenance or truncation fields give `error`, no advice and no spawn; a failed first human
+    prompt consumes model-line eligibility before inference, so a later success in the same
+    session cannot show that line.
 - **Service (fake model, no weights):**
   - endpoints, with every field of health and profile; the Host, Origin and Content-Type checks
-    on GET and POST; bad bodies (400) and unknown paths (404); a bind to 127.0.0.1 only;
+    on GET and POST, including invalid JSON-prefixed media types and valid media-type
+    parameters; bad bodies (400) and unknown paths (404); a bind to 127.0.0.1 only;
   - N services started at once with a fake 3 s load, giving exactly one load while the others
     exit 0 within 1 s (measured about 0.1 s); a service whose port is taken, and a fake-mode
     service, import nothing outside the standard library (no laya_mlx, no mlx);
@@ -600,12 +651,17 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
   - idle exit on a short timer: never mid-request, never while loading, counted from the last
     health or profile request; refusing rather than resetting a late connect; finishing a
     request already accepted; not held open by a silent connection; a bad `idle_seconds`
-    exiting before any load;
+    exiting before any load; slow health responses remain in flight until completion;
+    rejected 400/403/404/415 requests do not extend idle residence; booleans, numeric strings
+    and infinity are refused before binding;
   - a failing or corrupt load giving `not_ready` while staying bound, loading once over several
-    prompts, then idling out;
+    prompts, then idling out; `SystemExit` during loading also becomes `not_ready`;
   - the real predictor with a stand-in laya_mlx: `HF_HUB_OFFLINE` set before the import, the
     check-6 load arguments, `max_len`, every warm-up length, the temperatures on stderr, the
-    version, the prompt cap and a revision mismatch; a missing model directory never
+    version, the prompt cap and a revision mismatch; one question snapshot survives a file
+    edit between state construction and predictor loading, with the advertised hash matching
+    the executed definitions; character truncation is recorded even when upstream token
+    truncation is false and raw usage is unchanged; a missing model directory never
     triggering a download (`snapshot_download` patched to fail the test if called).
 - **Real model:** check 6 only, run on request.
 
