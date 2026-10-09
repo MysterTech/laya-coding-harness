@@ -25,7 +25,7 @@ before any task). **Mockup:** spec §4.12 plus `docs/mockups/stage0-check1-*.png
 
 **How this plan was verified (plan preflight):** every code block below was executed in a
 throwaway copy of the repo at commit `1606ae9` (every later commit changes only `docs/` and `README.md`) before being written here, and is copied from those
-files, not retyped. In that copy the full suite passed repeatedly (`211 passed, 1 deselected` with every task, after the review rounds of Tasks 1–5), the
+files, not retyped. In that copy the full suite passed repeatedly (`216 passed, 1 deselected` with every task, after the review rounds of Tasks 1–5), the
 controller-only gate passed (`.venv/bin/python -m pytest -q -m real_model` → `1 passed`, cold start
 to ready plus a warm call in 3.6 s), and each task's tests were run against the stubs in plan order
 with later tasks absent: every test failed, none passed against a stub (the RED counts below).
@@ -2449,7 +2449,7 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
   `request(port, method, path, body=None, headers=None, timeout=2.0) -> (status, body)`,
   `wait_health(port, want=("ready",), timeout=10.0)`, `stop(proc)`.
 
-> Revised after review round 1 (spec §4.4–§6 as of f0b29ef): the idle exit never fires while loading, counts health requests, closes the listener first and finishes accepted requests (5 s handler timeout); a predict failure is a 500; a bad `idle_seconds` exits before the bind; the real predictor refuses an unpinned revision and caps the prompt at 65,536 characters; and 26 more tests pin every field, the request checks on GET and POST, the loopback bind, stdlib-only imports, the MLX lock, stdout, the idle rules and the real predictor's load with a stand-in laya_mlx. The concurrency test proves the bind is the single-instance lock on macOS: of four services started at once, three exit 0 within 1 s and the fake model loads once.
+> Revised after review round 1 (spec §4.4–§6 as of f0b29ef): the idle exit never fires while loading, counts health requests, closes the listener first and finishes accepted requests (5 s handler timeout); a predict failure is a 500; a bad `idle_seconds` exits before the bind; the real predictor refuses an unpinned revision and caps the prompt at 65,536 characters; and 26 more tests pin every field, the request checks on GET and POST, the loopback bind, stdlib-only imports, the MLX lock, stdout, the idle rules and the real predictor's load with a stand-in laya_mlx. Review round 2 (spec 5e3aa5b): a client that gives up is not logged, and tests pin the idle-clock reset at the end of loading, the check before the bind, the 500 path off stdout and the beginning kept by the cap. The concurrency test proves the bind is the single-instance lock on macOS: of four services started at once, three exit 0 within 1 s and the fake model loads once.
 
 - [ ] **Step 1: Write the supporting files**
 
@@ -2760,6 +2760,7 @@ def test_inference_is_serialised_and_health_answers_during_it(service, configure
 @pytest.mark.parametrize("changes, state, status", [
     ({}, "ready", 200),
     ({"fake_load_error": "corrupt model.safetensors"}, "not_ready", 503),
+    ({"fake_predict_error": "metal::malloc failed"}, "ready", 500),
 ])
 def test_service_never_writes_to_stdout(configured, home, changes, state, status):
     write_config(home, idle_seconds=1, **changes)
@@ -2773,6 +2774,26 @@ def test_service_never_writes_to_stdout(configured, home, changes, state, status
     assert proc.returncode == 0 and out == b""
     if state == "not_ready":
         assert b"load failed: RuntimeError: corrupt model.safetensors" in err
+    if status == 500:  # §4.4: one line in service.log
+        assert err.count(b"predict failed:") == 1 and b"RuntimeError: metal::malloc failed" in err
+
+
+def test_a_client_that_gives_up_is_not_logged(capsys):
+    server = service_module._Server(("127.0.0.1", 0), service_module._Handler)
+    try:
+        for exc in (BrokenPipeError(32, "Broken pipe"), ConnectionResetError(54, "Connection reset")):
+            try:
+                raise exc
+            except OSError:
+                server.handle_error(None, ("127.0.0.1", 1))
+        assert capsys.readouterr().err == ""
+        try:
+            raise ValueError("a real problem")
+        except ValueError:
+            server.handle_error(None, ("127.0.0.1", 1))
+        assert "ValueError: a real problem" in capsys.readouterr().err  # still logged with a traceback
+    finally:
+        server.server_close()
 
 
 def test_predict_failure_is_a_500_and_the_service_stays_ready(service, configured):
@@ -2814,6 +2835,18 @@ def test_idle_clock_waits_for_the_load(service, configured):
     assert request(port, "GET", "/v1/health", timeout=0.5)[1]["state"] == "ready"
     proc.wait(timeout=5)
     assert proc.returncode == 0  # and the service still exits once idle
+
+
+@pytest.mark.parametrize("changes", [{}, {"fake_load_error": "corrupt model.safetensors"}])
+def test_idle_clock_restarts_when_the_load_ends(service, configured, changes):
+    """§4.4: idle time counts from the end of loading. No request is made while the 2.5 s load
+    runs, so only the reset at the end of `_load` keeps the service up past that point."""
+    proc = service(idle_seconds=2, fake_load_seconds=2.5, **changes)
+    wait_health(configured["port"], want=("loading",))  # the only request, near the load's start
+    time.sleep(2.5 + 1.0)  # the load has ended; an idle clock started at the poll would have fired
+    assert proc.poll() is None
+    proc.wait(timeout=5)
+    assert proc.returncode == 0
 
 
 def test_idle_timer_restarts_after_each_request(service, configured):
@@ -2902,6 +2935,20 @@ def test_bad_idle_seconds_exits_before_loading(configured, home, value):
         stop(proc)
     assert proc.returncode == 1 and b"idle_seconds must be a positive number" in err
     assert not (home / "fake_loads.txt").exists()
+
+
+def test_bad_idle_seconds_is_refused_before_the_bind(configured, home):
+    """§4.4 step 1: with the port taken, a service that checked after binding would exit 0."""
+    write_config(home, idle_seconds=0)
+    with socket.socket() as holder:
+        holder.bind(("127.0.0.1", configured["port"]))
+        holder.listen()
+        proc = start_service(home, stderr=subprocess.PIPE)
+        try:
+            _, err = proc.communicate(timeout=5)
+        finally:
+            stop(proc)
+    assert proc.returncode == 1 and b"idle_seconds must be a positive number" in err
 
 
 # --- the real predictor, without weights -------------------------------------------------
@@ -3000,9 +3047,10 @@ def test_real_predictor_caps_the_prompt_before_tokenizing():
 
     p = predictor.RealPredictor({"model_dir": "/unused"})
     p.agent = Agent()
-    p.predict("ab" * 2_500_000)
+    prompt = "head " + "x" * 5_000_000 + " tail"
+    p.predict(prompt)
     assert predictor.PROMPT_CHAR_CAP == 65536
-    assert seen == ["ab" * 32768]  # the beginning is kept, as laya-mlx's own truncation does
+    assert seen == [prompt[:65536]] and seen[0].startswith("head ")  # the beginning is kept, as laya-mlx's own truncation does
 ```
 
 - [ ] **Step 3: Create the modules as stubs**, so the tests fail on behaviour rather than on an import error (golden rule 4)
@@ -3089,6 +3137,9 @@ class _State:
 class _Server(ThreadingHTTPServer):
     daemon_threads = False
 
+    def handle_error(self, request, client_address):
+        raise NotImplementedError
+
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.0'
     timeout = 5
@@ -3129,7 +3180,7 @@ if __name__ == '__main__':
 
 Run: `.venv/bin/python -m pytest -q tests/test_service.py`
 
-Expected: `33 failed` (takes about 3 minutes: most tests wait for a service that never answers); every failure is `NotImplementedError`, an assertion that the service never came up, or an assertion that follows from it (`assert 4 == 3` in `test_concurrent_starts_load_once`, where all four stub processes exit; a `NotImplementedError` traceback where the import probe and the bad-`idle_seconds` tests expect their own output). Record the output in the task report.
+Expected: `38 failed` (takes about 3 minutes: most tests wait for a service that never answers); every failure is `NotImplementedError`, an assertion that the service never came up, or an assertion that follows from it (`assert 4 == 3` in `test_concurrent_starts_load_once`, where all four stub processes exit; a `NotImplementedError` traceback where the import probe and the bad-`idle_seconds` tests expect their own output). Record the output in the task report.
 
 - [ ] **Step 5: Implement**, replacing the stubs with exactly this code
 
@@ -3276,6 +3327,11 @@ class _State:
 
 class _Server(ThreadingHTTPServer):
     daemon_threads = False  # server_close() then waits for every request already accepted
+
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError)):
+            return  # the client gave up (its 1.5 s deadline): routine, not a service problem
+        super().handle_error(request, client_address)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -3424,11 +3480,11 @@ if __name__ == "__main__":
 
 Run: `.venv/bin/python -m pytest -q tests/test_service.py`
 
-Expected: `33 passed`.
+Expected: `38 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `178 passed, 1 deselected`.
+Expected: `183 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -4307,7 +4363,7 @@ Expected: `23 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `201 passed, 1 deselected`.
+Expected: `206 passed, 1 deselected`.
 
 - [ ] **Step 6: Self-review and report — no commit** (golden rule 2)
 
@@ -4686,7 +4742,7 @@ Expected: `10 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `211 passed, 1 deselected`.
+Expected: `216 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -4770,7 +4826,7 @@ def test_real_service_answers_the_stage0_questions(configured, home):
   Add `laya-harness setup | status | stop | mode` to the gate profile with the results you observed.
 
 - [ ] **Step 3 (controller): Final gates.** Run `.venv/bin/python -m pytest -q` (expected
-  `211 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
+  `216 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
   Contract-drift check: `git status --porcelain -- docs/` must be empty. The controller commits every
   doc change on its own before code, so an uncommitted doc edit can only have come from a subagent.
 
