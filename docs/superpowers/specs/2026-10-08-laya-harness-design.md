@@ -192,7 +192,7 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
 2. Serve `GET /v1/health` from a thread. It returns
    `{"app": "laya-harness", "version", "pid", "state": "loading|ready|not_ready", "reason"}`.
    Until the model is ready, `POST /v1/profile` answers 503 with `app: "laya-harness"`,
-   `state: "loading"` and `reason`.
+   `state: "loading"` and `reason` (a string or null).
 3. Set `HF_HUB_OFFLINE=1`, import laya_mlx, and load the checkpoint **from the absolute local
    directory in `config.json`, never by repo id.** If `config.json` records a revision that is
    not the pinned one (the pin was bumped but setup not re-run), the load fails with
@@ -230,8 +230,9 @@ Run as `python -I -m laya_harness.service`. It never writes to stdout.
   `usage.truncated` is a boolean, and the aggregate `truncated` agrees with that flag or a
   positive character-drop count. Otherwise it records `error`, logs a diagnostic, shows
   nothing and starts nothing. A loading/not-ready 503 must also identify
-  `app: "laya-harness"`; a foreign or malformed 503 is an error. This is application
-  identification, not version negotiation or authentication against same-user processes.
+  `app: "laya-harness"` and include `reason` as a string or null; a foreign or malformed
+  503 is an error. This is application identification, not version negotiation or
+  authentication against same-user processes.
   If inference raises, the reply is 500 `{"error": <exception class>}`
   with one line in `service.log`, and the service stays `ready`.
 - The real predictor passes at most the first 65,536 characters of a prompt to laya-mlx,
