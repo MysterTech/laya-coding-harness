@@ -22,37 +22,41 @@ laya-harness is a local "System 1" advisor for Claude Code. A hook sends each pr
 
 ## State at handoff (2026-10-09)
 
-- **Docs:** committed on `main`. Run `git log` to see them. The latest plan commit is `a11bdb8`.
-- **Implementation:** Tasks 1–7 and Task 8 Step 1 are on disk, **uncommitted**. Each task was reviewed independently and approved, with no P1 or P2 findings left.
-  - Every file is byte-identical to its plan block.
-  - `.venv/bin/python -m pytest -q` gives `255 passed, 1 deselected` (about 75 s).
+- **Docs:** committed on `main`. The accepted review fixes are specified in `f74681f` and `16ab512`; the regenerated plan is `0c07e35`. The user's D16 addition is preserved.
+- **Implementation:** Tasks 1–7 and Task 8 Step 1 are on disk, **uncommitted**. All ten accepted P1 findings and the accepted P2 test gaps were fixed through the workbench procedure below. Independent contract review returned **APPROVED**, with no findings in the fix-round scope.
+  - All 34 final file blocks are byte-identical to the generated plan, including the Task 7 replacement in `__main__.py`.
+  - The repo fake suite gives `345 passed, 1 deselected in 80.94 s`; independent workbench verification gives `345 passed, 1 deselected in 80.35 s`.
+  - Every task's cumulative GREEN and stub RED was replayed. Task 6 has one import-only test that passes stubs; a separate third-party-import mutation proves its sensitivity. The other accepted P2 tests also caught deliberate mutations.
+  - **Model exception for this fix round:** the user authorized Codex implementers and an independent Codex reviewer because Claude limits were exhausted. This does not permanently change the signed-off model routing.
 - **Per-task snapshots:** kept in `refs/laywip/stage0/*`; list them with `git for-each-ref refs/laywip`. Diff any two to see a review round.
-- **Not done yet: Task 8 Steps 2–9.** These are: console-script install, final gates, setup, acceptance with the user, visual QA, the single commit, and the hook install. They are on hold for the user's Codex review.
+- **Not done yet: Task 8 Steps 2–9.** These are: console-script install, final gates, setup, acceptance with the user, visual QA, the single commit, and the hook install. **Stop before Task 8 Step 2**, as the user instructed. The real-model gate was not rerun in this fix round. Visual review is N/A for the fixes because the adapter and copy are unchanged; UI acceptance remains pending.
 - **Non-blocking review items** are listed in `.workbench/deferred_p3.md` and in `.workbench/codex-stage0-review-prompt.md`.
 
 ## Next steps, in order
 
-1. **Codex review.** Run the review prompt in `.workbench/codex-stage0-review-prompt.md` in a read-only sandbox. Report the findings to the user.
-2. **Fix rounds for the findings the user accepts.** For each one, docs first:
+1. **The accepted Codex fix round is complete.** Keep the implementation uncommitted and Task 8 Step 2 on hold until the user resumes that work.
+2. **Any further accepted fix round** uses the same docs-first procedure:
    1. edit the spec and commit it;
    2. change the code and tests in `.workbench/plan-verify/` and run them there: GREEN, plus RED against the stubs in `.workbench/plan-stubs/`;
    3. update the counts and notes in `.workbench/gen_plan.py`, regenerate the plan, and commit it;
    4. copy the verified blocks into the repo;
    5. run the drift check and the full suite.
-3. **Task 8 Steps 2–9,** as the plan describes them. Several steps need the user: installing hooks into `~/.claude/settings.json` needs their approval of the exact diff, and acceptance needs them to work in the Claude app.
+3. **When the user resumes Task 8 Steps 2–9,** follow the plan. Several steps need the user: installing hooks into `~/.claude/settings.json` needs their approval of the exact diff, and acceptance needs them to work in the Claude app.
 4. **After stage 0:** a design round for the Bridge and the web HUD (spec D14 and D15). The spec and mockups come first.
 
 ## Workbench (`.workbench/`, ignored by git through `.git/info/exclude`)
 
 - `plan-verify/`: the verified copy of the repo the plan is generated from. Its `.venv` is a bare venv with a `.pth` that points at the repo venv's site-packages, so `python -I -m laya_harness ...` subprocesses import this copy rather than the repo. Run `cd .workbench/plan-verify && .venv/bin/python -m pytest -q`.
 - `plan-stubs/`: the stub modules for each task, used for the RED check. `stubify.py <module.py>` regenerates a stub: the bodies become `raise NotImplementedError`, and docstrings, constants and classes are kept.
-- `gen_plan.py`: rebuilds the plan from `plan-verify/` and `plan-stubs/`. It holds each task's metadata, notes and test counts (`red=`, `total=`). Run:
-  `python3 gen_plan.py "<repo>/docs/superpowers/plans/2026-10-08-laya-harness-stage0.md" '`1606ae9` (every later commit changes only `docs/` and `README.md`)'`.
+- `gen_plan.py`: rebuilds the plan from `plan-verify/` and `plan-stubs/`. It holds each task's metadata, notes and test counts (`red=`, optional `red_passes=` / `focused_total=`, and cumulative `total=`). From the repo root, the controller runs:
+  `.venv/bin/python -B .workbench/gen_plan.py docs/superpowers/plans/2026-10-08-laya-harness-stage0.md '1606ae9 (later branch commits change documentation only)'`.
   It currently reproduces the committed plan byte for byte.
 - `drift.py <task>`: compares the repo's files for a task against `plan-verify/`.
-  - It runs from `.workbench/`.
+  - From the repo root, run `.venv/bin/python -B .workbench/drift.py <task>`.
   - Task 6 always shows `__main__.py` as drifted, because Task 7 edits it by design. The Task 7 check covers the final form.
-- **Scratch copies for mutation or RED runs:** use a fresh venv the same way, `python3.11 -m venv --without-pip` plus a `.pth` holding the copy's path and the repo venv's site-packages. A plain copy would import the repo through its editable install.
+- `check_plan_blocks.py`: the controller's literal-byte check of all final file blocks and stubs. `.venv/bin/python -B .workbench/check_plan_blocks.py --repo` checks the workbench and repo, applying the Task 7 replacement explicitly.
+- `verify_fix_round.py`: controller replay of isolated cumulative GREEN and focused stub RED task boundaries. Logs are a regenerable cache in `/private/tmp/laya-stage0-fix-run/`.
+- **Scratch copies for mutation or RED runs:** use the repo's `.venv/bin/python -m venv --without-pip` plus a `.pth` holding the copy's path and the repo venv's site-packages. A plain copy would import the repo through its editable install.
 
 ## Things never to do in tests or reviews
 
