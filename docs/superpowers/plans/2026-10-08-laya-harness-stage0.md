@@ -25,7 +25,7 @@ before any task). **Mockup:** spec §4.12 plus `docs/mockups/stage0-check1-*.png
 
 **How this plan was verified (plan preflight):** every code block below was executed in a
 throwaway copy of the repo at commit `1606ae9` (every later commit changes only `docs/` and `README.md`) before being written here, and is copied from those
-files, not retyped. In that copy the full suite passed repeatedly (`239 passed, 1 deselected` with every task, after the review rounds of Tasks 1–6), the
+files, not retyped. In that copy the full suite passed repeatedly (`255 passed, 1 deselected` with every task, after the review rounds of Tasks 1–7), the
 controller-only gate passed (`.venv/bin/python -m pytest -q -m real_model` → `1 passed`, cold start
 to ready plus a warm call in 3.6 s), and each task's tests were run against the stubs in plan order
 with later tasks absent: every test failed, none passed against a stub (the RED counts below).
@@ -4649,7 +4649,7 @@ Run: `git diff --check` (expected: no output). Report to the controller: files c
   `unknown_models() -> set`, `status(out=None) -> int`, `stop(out=None) -> int`,
   `set_mode(value, out=None) -> int`, `main(argv) -> int`.
 
-> `setup` is the only network path, and the tests inject the downloader, so no test touches the network. From the Task 2 review: `setup` reuses a checkpoint only when every required file is present and the weights match, and fails if a download stays incomplete (spec §4.5). Known limitation, deferred from review of Task 1 (P3-9): a hand-edited invalid `mode` in config.json makes `laya-harness mode` and `status` raise; the hooks still fail silent, and the fix is to edit the file by hand.
+> Revised after review round 1 (spec 83e1126): `stop` exits 1 and stops nothing when the port does not answer as laya-harness, and never signals an invalid pid; `status` reads the log line by line and skips rows it cannot read; `mode` refuses other values; `setup` prints the download size and source first; and 16 more tests pin every status outcome, the reuse sha check, the download arguments and the hook self-check (the two stop tests now stop their service in a `finally`). `setup` is the only network path, and the tests inject the downloader, so no test touches the network. From the Task 2 review: `setup` reuses a checkpoint only when every required file is present and the weights match, and fails if a download stays incomplete (spec §4.5). Known limitation, deferred from review of Task 1 (P3-9): a hand-edited invalid `mode` in config.json makes `laya-harness mode` and `status` raise; the hooks still fail silent, and the fix is to edit the file by hand.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4707,7 +4707,8 @@ def test_setup_downloads_writes_config_and_prints_snippet(home, fake_checkpoint)
     cfg = config.load()
     assert cfg["model_dir"] == str(model_dir) and cfg["interpreter"] == sys.executable
     assert cfg["revision"] == "047678560251f28113ee8f5df4be82102c7bf336"
-    snippet = json.loads(out.getvalue().split("\n", 1)[1])
+    assert out.getvalue().startswith("downloading the pinned checkpoint (about 807 MB) from aac6fef/laya-mlx@047678560251")
+    snippet = json.loads(out.getvalue().split("(spec §10):\n", 1)[1])
     assert snippet == hookargv.settings_snippet(sys.executable)
     assert not (home / "sessions" / f"{commands.SETUP_SESSION}.json").exists()
 
@@ -4730,6 +4731,33 @@ def test_setup_repairs_a_checkpoint_missing_its_tokenizer(home, fake_checkpoint)
     assert (model_dir / "tokenizer" / "tokenizer.json").is_file()
 
 
+def test_setup_replaces_a_complete_checkpoint_whose_weights_do_not_match(home, fake_checkpoint):
+    model_dir = home / "models" / f"laya-mlx@{fake_checkpoint['revision']}"
+    place(model_dir, b"tampered")
+    download = writer(FAKE_WEIGHTS)
+    out = io.StringIO()
+    assert commands.setup(download=download, out=out) == 0
+    assert download.calls == [model_dir] and "already in place" not in out.getvalue()
+
+
+def test_download_fetches_only_the_pinned_revision_and_listed_files(tmp_path, monkeypatch):
+    import huggingface_hub
+
+    calls = []
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", lambda *a, **k: calls.append((a, k)))
+    ck = resources.checkpoint()
+    commands._download(ck, tmp_path / "m")
+    assert calls == [(("aac6fef/laya-mlx",), {"revision": "047678560251f28113ee8f5df4be82102c7bf336",
+                                              "local_dir": str(tmp_path / "m"), "allow_patterns": ck["files"]})]
+
+
+def test_setup_fails_when_the_hook_command_fails(home, fake_checkpoint, monkeypatch):
+    monkeypatch.setattr(commands.hookargv, "hook_argv", lambda *a: [sys.executable, "-c", "import sys; sys.exit(3)"])
+    out = io.StringIO()
+    assert commands.setup(download=writer(FAKE_WEIGHTS), out=out) == 1
+    assert "failed its check (exit 3)" in out.getvalue() and '"hooks"' not in out.getvalue()
+
+
 def test_setup_rejects_a_checksum_mismatch(home, fake_checkpoint):
     out = io.StringIO()
     assert commands.setup(download=writer(b"tampered"), out=out) == 1
@@ -4749,6 +4777,9 @@ def test_mode_sets_config_and_rejects_unknown(home):
     assert config.load()["mode"] == "log-only"
     with pytest.raises(SystemExit):
         commands.main(["mode", "loud"])
+    with pytest.raises(ValueError):
+        commands.set_mode("loud")
+    assert config.load()["mode"] == "log-only"
 
 
 def test_status_down_and_ready(configured, home):
@@ -4765,6 +4796,30 @@ def test_status_down_and_ready(configured, home):
         stop(proc)
 
 
+@pytest.mark.parametrize("outcome, body, shown", [
+    ("ok", {"app": "laya-harness", "state": "not_ready", "reason": "FileNotFoundError: missing x"},
+     "not_ready (FileNotFoundError: missing x)"),
+    ("ok", {"app": "laya-harness", "state": "loading"}, "loading"),
+    ("timeout", None, "unreachable (timeout)"),
+    ("foreign", None, "unreachable (foreign)"),
+])
+def test_status_line_for_each_health_outcome(configured, home, monkeypatch, outcome, body, shown):
+    write_config(home, revision="047678560251f28113ee8f5df4be82102c7bf336")
+    monkeypatch.setattr(commands.service_client, "health", lambda port, timeout: (outcome, body))
+    out = io.StringIO()
+    assert commands.status(out=out) == 0
+    assert out.getvalue() == f"laya-harness: {shown} · mode show · checkpoint 047678560251 · logs {home}\n"
+
+
+def test_status_skips_rows_it_cannot_read(configured, home):
+    lines = ['{"trunc', "123", "null", "[1]", '{"session": "x"}', '{"session": {"model": 5}}',
+             json.dumps({"session": {"model": "claude-opus-6"}})]
+    (home / "decisions.jsonl").write_bytes(("\n".join(lines) + "\n").encode() + b"\xff\n")
+    out = io.StringIO()
+    assert commands.status(out=out) == 0
+    assert out.getvalue().splitlines()[1] == "models in the log that the catalog does not list: claude-opus-6"
+
+
 def test_status_lists_models_the_catalog_does_not_know(configured, home):
     rows = [{"session": {"model": "claude-opus-5-5[1m]"}}, {"session": {"model": "claude-opus-6"}},
             {"session": {"model": None}}]
@@ -4776,24 +4831,47 @@ def test_status_lists_models_the_catalog_does_not_know(configured, home):
 
 def test_stop_kills_the_service_and_warns(configured, home):
     proc = start_service(home)
-    wait_health(configured["port"])
-    out = io.StringIO()
-    assert commands.stop(out=out) == 0
-    proc.wait(timeout=5)
-    assert "stopped the service" in out.getvalue() and "mode off" in out.getvalue()
-    out = io.StringIO()
-    commands.stop(out=out)
-    assert out.getvalue().strip() == "laya-harness: not running"
+    try:
+        wait_health(configured["port"])
+        out = io.StringIO()
+        assert commands.stop(out=out) == 0
+        proc.wait(timeout=5)
+        assert "stopped the service" in out.getvalue() and "mode off" in out.getvalue()
+        out = io.StringIO()
+        assert commands.stop(out=out) == 0
+        assert out.getvalue().strip() == "laya-harness: not running"
+    finally:
+        stop(proc)
 
 
 def test_stop_in_mode_off_does_not_warn(configured, home):
     write_config(home, mode="off")
     proc = start_service(home)
-    wait_health(configured["port"])
+    try:
+        wait_health(configured["port"])
+        out = io.StringIO()
+        commands.stop(out=out)
+        proc.wait(timeout=5)
+        assert "mode off" not in out.getvalue()
+    finally:
+        stop(proc)
+
+
+@pytest.mark.parametrize("outcome", ["timeout", "foreign", "error"])
+def test_stop_reports_a_port_it_cannot_identify(configured, monkeypatch, outcome):
+    monkeypatch.setattr(commands.service_client, "health", lambda port, timeout: (outcome, None))
+    monkeypatch.setattr(commands.os, "kill", lambda *a: pytest.fail("os.kill called"))
     out = io.StringIO()
-    commands.stop(out=out)
-    proc.wait(timeout=5)
-    assert "mode off" not in out.getvalue()
+    assert commands.stop(out=out) == 1
+    assert "not running" not in out.getvalue() and f"({outcome})" in out.getvalue()
+
+
+@pytest.mark.parametrize("pid", [0, -1, None, "123", True])
+def test_stop_never_signals_an_invalid_pid(configured, monkeypatch, pid):
+    monkeypatch.setattr(commands.service_client, "health",
+                        lambda port, timeout: ("ok", {"app": "laya-harness", "pid": pid, "state": "ready"}))
+    monkeypatch.setattr(commands.os, "kill", lambda *a: pytest.fail("os.kill called"))
+    assert commands.stop(out=io.StringIO()) == 1
 ```
 
 - [ ] **Step 2: Create the modules as stubs**, so the tests fail on behaviour rather than on an import error (golden rule 4)
@@ -4841,7 +4919,7 @@ def main(argv) -> int:
 
 Run: `.venv/bin/python -m pytest -q tests/test_commands.py`
 
-Expected: `10 failed`; every failure is `NotImplementedError`. Record the output in the task report.
+Expected: `26 failed`; every failure is `NotImplementedError`. Record the output in the task report.
 
 - [ ] **Step 4: Implement**, replacing the stubs with exactly this code
 
@@ -4884,6 +4962,8 @@ def setup(download=None, out=None) -> int:
     if _complete(model_dir, ck) and resources.sha256_file(weights) == ck["weights_sha256"]:
         print(f"checkpoint already in place: {model_dir}", file=out)
     else:
+        print(f"downloading the pinned checkpoint (about 807 MB) from {ck['repo']}@{ck['revision'][:12]} "
+              f"into {model_dir}", file=out)
         (download or _download)(ck, model_dir)
         if not _complete(model_dir, ck) or resources.sha256_file(weights) != ck["weights_sha256"]:
             print("the download is incomplete or does not match the pinned sha256", file=out)
@@ -4908,13 +4988,17 @@ def unknown_models() -> set:
     known = catalog.known(resources.catalog())
     seen = set()
     path = paths.decisions_path()
-    if path.is_file():
-        for line in path.read_text(encoding="utf-8").splitlines():
+    if not path.is_file():
+        return seen
+    with open(path, encoding="utf-8", errors="replace") as f:  # line by line: the log can be large
+        for line in f:
             try:
-                model = (json.loads(line).get("session") or {}).get("model")
+                row = json.loads(line)
             except ValueError:
                 continue
-            name = catalog.canonical(model)
+            session = row.get("session") if isinstance(row, dict) else None
+            model = session.get("model") if isinstance(session, dict) else None
+            name = catalog.canonical(model) if isinstance(model, str) else None
             if name and name not in known:
                 seen.add(name)
     return seen
@@ -4942,10 +5026,22 @@ def stop(out=None) -> int:
     out = out or sys.stdout
     cfg = config.load()
     outcome, body = service_client.health(config.port(cfg), timeout=0.5)
-    if outcome != "ok":
+    if outcome == "refused":
         print("laya-harness: not running", file=out)
         return 0
-    os.kill(body["pid"], signal.SIGTERM)
+    if outcome != "ok":
+        print(f"laya-harness: port {config.port(cfg)} did not answer as laya-harness ({outcome}); "
+              "nothing stopped", file=out)
+        return 1
+    pid = body.get("pid")
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 1 or pid == os.getpid():
+        print(f"laya-harness: the service reported an invalid pid {pid!r}; nothing stopped", file=out)
+        return 1
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:  # it exited between the health check and the signal
+        print("laya-harness: not running", file=out)
+        return 0
     print(f"stopped the service (pid {body['pid']})", file=out)
     if cfg["mode"] != "off":
         print("note: the next prompt starts it again; `laya-harness mode off` keeps it down", file=out)
@@ -4954,6 +5050,8 @@ def stop(out=None) -> int:
 
 def set_mode(value: str, out=None) -> int:
     out = out or sys.stdout
+    if value not in config.MODES:
+        raise ValueError(f"mode must be one of {', '.join(config.MODES)}, not {value!r}")
     cfg = config.load()
     cfg["mode"] = value
     config.save(cfg)
@@ -4999,11 +5097,11 @@ with:
 
 Run: `.venv/bin/python -m pytest -q tests/test_commands.py`
 
-Expected: `10 passed`.
+Expected: `26 passed`.
 
 Run: `.venv/bin/python -m pytest -q`
 
-Expected: `239 passed, 1 deselected`.
+Expected: `255 passed, 1 deselected`.
 
 - [ ] **Step 7: Self-review and report — no commit** (golden rule 2)
 
@@ -5087,7 +5185,7 @@ def test_real_service_answers_the_stage0_questions(configured, home):
   Add `laya-harness setup | status | stop | mode` to the gate profile with the results you observed.
 
 - [ ] **Step 3 (controller): Final gates.** Run `.venv/bin/python -m pytest -q` (expected
-  `239 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
+  `255 passed, 1 deselected`) and `.venv/bin/python -m pytest -q -m real_model` (expected `1 passed`).
   Contract-drift check: `git status --porcelain -- docs/` must be empty. The controller commits every
   doc change on its own before code, so an uncommitted doc edit can only have come from a subagent.
 
