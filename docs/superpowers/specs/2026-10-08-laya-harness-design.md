@@ -14,12 +14,16 @@ typed-decision model (laya-mlx, MLX on Apple silicon), to read each prompt you s
 Code or Codex. It classifies the prompt into a harness-neutral *execution profile*, then
 recommends how to configure the harness for that task.
 
-**The goal is the most correct code from the user's plan (D16).** Every recommendation about
-model and effort minimises the **expected cost per correct task**: the cost of an attempt,
-corrections and redo turns included, divided by the chance that the attempt ends correct. A
-dearer option is right only when its higher success rate more than pays for its price, so
-neither "cheapest" nor "strongest" is a goal on its own. Cost is counted in tokens priced at
-the catalog's list prices (§4.13), as the stand-in for plan usage, which hooks cannot read.
+**The goal is the most correct code from the user's plan (D16).** Code must be correct, so
+quality comes first. But a dearer model or a higher effort is worth recommending only when it
+makes a **significant** difference to quality. When it changes the cost but not the quality
+in any significant way, the cheaper setting stays. Between two settings, a quality difference
+that is not significant counts as no difference, and cost decides. There is no fixed
+exchange rate between cost and quality. What counts as significant is judged per class from
+measured evidence (stage 2), and the user approves it. Neither "cheapest" nor "strongest" is
+a goal on its own. Cost is counted in tokens per task, corrections and redo turns included,
+priced at the catalog's list prices (§4.13), as the stand-in for plan usage, which hooks
+cannot read.
 
 laya-harness is the umbrella for the whole system, the web HUD included (D15). The boundaries
 below bind the **Laya component**. The Bridge and the HUD, when they arrive, may start sessions
@@ -519,19 +523,21 @@ Which model and effort to suggest is deterministic adapter data (D12, D13).
   - Older versions currently cost the same as, or more than, the newest in their family. So an
     opted-in older version is suggested only when the fit table names it by id and no cheaper
     option fits.
-  - **How this serves the goal (§1, D16).** Until stage 2 measures success rates, every option
-    the fit table lists for a class is treated as equally likely to end correct. With equal
-    chances, the lowest expected cost per correct task is simply the lowest price, so this
-    rule is the stage-0 form of the goal. The fit table therefore lists only options the user
-    expects to do the class correctly, not every option that could.
+  - **How this serves the goal (§1, D16).** Until stage 2 measures quality, the options the
+    fit table lists for a class are treated as having no significant quality difference
+    between them. Under the goal, cost then decides, so this rule is the stage-0 form of the
+    goal. The fit table therefore lists only options the user expects to do the class
+    correctly, not every option that could.
 - **Refresh.** Hooks cannot read the app's picker, so the catalog is edited by hand when models
   change, as a reviewed diff. `laya-harness status` lists any model seen in the decision log
   (from `PostModelSwitch` or the transcript) that the catalog does not know.
 - **Learning (stages 2–3).** The user's history spans many versions. Stage 2 measures, per
   class, model, version and effort, the success rate (the task ended correct with no
-  interruption, correction or redo) and the token cost, and from them the expected cost per
-  correct task (§1). It proposes fit-table changes as reviewed diffs: adding an option that
-  lowers the class's cost per correct task, and removing one that another option beats.
+  interruption, correction or redo) and the token cost per task (§1). It proposes fit-table
+  changes as reviewed diffs, each stating the quality difference, how reliable it is, and the
+  cost difference:
+  - removing a dearer option when a cheaper one shows no significant quality loss;
+  - keeping or adding a dearer option only when it shows a significant quality gain.
 
 ## 5. Failure handling — laya stays out of the way
 
@@ -696,7 +702,7 @@ acceptance):
 | Stage 2 | Question wording: an effort-scale `difficulty` without topic words, compared on history. |
 | Stage 2 | Checkpoint comparison (English, typed-decisions, multilingual) on a labelled set; tune thresholds on history; apply the prompt-source filter in the history reader. |
 | Stage 2 | How often the uncompared model line (D10) was redundant, and how often it was followed, from the logged session state. |
-| Stage 2 | A fit table from evidence: per class, model, version and effort, the success rate, token cost and expected cost per correct task (§1, D16), proposed as reviewed diffs to the fit table (§4.13). |
+| Stage 2 | A fit table from evidence: per class, model, version and effort, the success rate and token cost per task; a dearer option stays only for a significant quality gain (§1, D16); proposed as reviewed diffs to the fit table (§4.13). |
 | Stage 3 | Refit per-field thresholds and calibration from outcomes and labels. |
 | Stage 4 | MODEL and REASONING as separate suggestions compared with the current setting (known from the second prompt on): effort on later prompts, model after clear, compact or resume; harness notes for MODE and PARALLELISM; prompt-stopping never fires on non-human turns; calibrated wording for scores. |
 | Stage 5 | CONTEXT advice using SessionStart's `prompt_cache_likely_expired`, `seconds_since_last_response` and `context_tokens`, and PostModelSwitch's `prompt_cache_warm` and `estimated_cache_write_usd` (all observed in check 4). |
@@ -723,7 +729,7 @@ acceptance):
 | D13 | 2026-10-08 | The catalog lists every model version in the picker. The newest per family is allowed by default, older versions are opt-in, and Fable is never allowed. |
 | D14 | 2026-10-08 | Target architecture adopted: front doors (an Obsidian plugin and a web HUD, with voice) → a Bridge → **Laya as the tier router** (in place of TypeSafe's Jev, whose wire protocol laya-serve already speaks) → Tier 1 rules and vault data, Tier 2 a small fast model, Tier 3 a Claude Code or Codex session or skill → **Obsidian as the memory**, with a receipt per request. Stage 0 finishes its reusable core (Tasks 1–5: state, data, session state, adapter and catalog, the Laya service); the in-session hooks (Tasks 6–7) and stage-0 acceptance are parked until the Bridge design decides how the service is started. The Bridge gets its own spec and mockups. *Parking lifted by D15.* |
 | D15 | 2026-10-08 | laya-harness is the umbrella and the UI is in its scope; §1's boundaries bind the Laya component. The first front door is a web HUD, without voice in its first phase; the Obsidian plugin comes later. The HUD stage follows stage 2 (Measure), so it shows measured confidence rather than raw guesses. The harness is built first: Tasks 6–7 and stage-0 acceptance are unparked as written, the hook starting the service itself; the Bridge later reuses or replaces that start-up path. |
-| D16 | 2026-10-09 | The goal is the most correct code from the user's plan. Model and effort recommendations minimise the expected cost per correct task: cost (corrections and redo included) divided by the chance of ending correct (§1). This refines D12: in stage 0 the fit table's options count as equally likely to be correct, so the cheapest one wins; stage 2 replaces that assumption with measured success rates. |
+| D16 | 2026-10-09 | The goal is the most correct code from the user's plan. Quality comes first, but a dearer model or higher effort is recommended only for a significant quality gain; when it changes cost but not quality significantly, the cheaper setting stays. No fixed cost-to-quality ratio: significance is judged per class from measured evidence and approved by the user (§1). This refines D12: in stage 0 the fit table's options count as having no significant quality difference, so the cheapest one wins; stage 2 replaces that assumption with measurements. |
 
 ## Appendix B — Design review (2026-10-07 to 2026-10-08)
 
