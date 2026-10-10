@@ -94,10 +94,10 @@ Observed: hooks/list recognizes both exact command definitions and 8/3-second ti
 - Use exact-definition native trust in the isolated home; never a global bypass.
 - Check systemMessage appears as a warning entry, and remains absent from model-visible context. If the debug path does not run prompt hooks, report that limit and rely on the live desktop gate rather than fabricating evidence.
 
-## Task 3: Install the temporary project probe and capture (pending user approval)
+## Task 3: Install the temporary project probe and capture (installed; native trust and live capture pending)
 
-- Show the exact draft above to the user for approval. After approval, create `.codex/hooks.json` byte-identical to it.
-- User reviews/trusts the hooks through Codex’s native hook UI. Record observed review and reload behavior; do not write a guessed trust hash into real config.
+- The user approved both direction and exact draft (“both approved”). `.codex/hooks.json` was created byte-identically to the draft and verified mode 0600. Keep this temporary local file excluded through `.git/info/exclude` so WIP snapshots never stage it.
+- The installed app bundle confirms Settings → Hooks, with Reload hooks, project sources and trust controls. User reviews/trusts only the two laya probe hooks through that native UI. Record observed review and reload behavior; do not write a guessed trust hash into real config.
 - User starts a fresh Codex session in this repository and sends `Reply with just: hook check complete.`
 - Inspect private metadata capture for the exact native payload. User confirms the fixed temporary warning and successful answer; collect expanded warning visual evidence.
 - Establish context separation from native runtime evidence, not from whether the model happened to mention the warning.
