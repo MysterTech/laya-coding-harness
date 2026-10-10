@@ -622,3 +622,7 @@ def test_rejected_commands_private_diagnostics(home,stage,capsys):
     assert (home/'launcher.log').stat().st_mode & 0o777 == 0o600
     assert capsys.readouterr() == ('','')
 ```
+
+## Native round 2 contract correction
+
+Round1 startup/decided/logappend passed; controller healthpolling invalidated idle measurement and was corrected (temporaryjobcleanupverified). Round2 quiet idleexit0/no restart passed, refused-only restarted once, explicitSIGTERM/no restart passed. Subsequent rapidkickstart exceeded0.6s commandbudget. Installedlaunchd.plist manual documents default ten-second launch throttling. Spec now requires ThrottleInterval0 for explicit on-demand restart, with KeepAlivefalse/RunAtLoadfalse unchanged. Add behavioralRED definitiontest thenGREEN, regenerate literalblocks and independentlyreview before native rerun. Both temporaryjobs removed and absent. No production/liveconfiguration changes.
