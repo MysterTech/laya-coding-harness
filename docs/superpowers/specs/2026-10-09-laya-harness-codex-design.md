@@ -84,7 +84,7 @@ Read the selected default model and model_reasoning_effort from `CODEX_HOME/conf
 
 ### C4 Adapter, catalog and copy
 
-Rules version is `codex_v0`. Use the question set's existing display thresholds, rounded tier sums and tie rules, independent plan gate, minimum prompt length and one-shot shown gates. Plan mode means permission_mode `plan` or a prompt beginning with `/plan` after left trimming. Actual effort is unknown so there is no same-model suppression. Keep all three mismatch entries and parallelism log-only. At most two lines, model then plan. The model line uses the shared exact model_line formatter; the Codex plan line is exactly:
+Rules version is `codex_v0`. Use the question set's existing display thresholds, rounded tier sums and tie rules, independent plan gate, minimum prompt length and one-shot shown gates. Plan mode means permission_mode `plan` or a prompt beginning with `/plan` after left trimming. The embedded native hook schema supports permission_mode plan, but mapping from the desktop Plan collaboration setting to this field is not yet verified. The suppression promise applies to the received field and /plan prefix only; do not claim reliable detection of the native UI Plan setting until a controlled Plan-mode capture establishes it. Actual effort is unknown so there is no same-model suppression. Keep all three mismatch entries and parallelism log-only. At most two lines, model then plan. The model line uses the shared exact model_line formatter; the Codex plan line is exactly:
 
 `laya · reads like a multi-step change (p=0.88) → Plan mode (/plan), or tell Codex to plan first`
 

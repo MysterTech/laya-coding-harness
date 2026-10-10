@@ -23,3 +23,5 @@ The sentinel is absent from the persisted rollout. This alone does not prove abs
 ## Expanded Hook stats capture
 
 The user supplied `Screenshot 2026-10-10 at 9.49.42 AM.png`: Runs 2, Blocked 0, Failed 0; Completed UserPromptSubmit / Project; Message `laya · Codex hook check (temporary probe)`. The separate Stop / Plugin entry is unrelated. Native execution and user-side warning delivery are confirmed. The supported surface requires opening Hook stats; no inline banner is claimed. Official systemMessage semantics and rollout sentinel absence support context separation, while direct model-input auditing remains a limitation. This is preflight evidence, not production adapter acceptance.
+
+Native schema clarification: the installed executable's embedded `user-prompt-submit.command.input` schema (byte offset 188011567) permits permission_mode default/acceptEdits/plan/dontAsk/bypassPermissions. No collaboration-mode or effort field exists there. Native turn/start separately has collaborationMode plan/default. Actual mapping of UI Plan mode to hook permission_mode remains unverified; adapter suppression applies only to received plan or /plan prefix.
