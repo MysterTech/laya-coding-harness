@@ -17,3 +17,7 @@ After independent approval, controller creates a uniquely labeled gui/uid job wi
 ## Task 3 — evidence-driven production design
 
 Finalize lifecycle/identity/cleanup requirements from observed behavior. Update parent docs first and generate a literal production plan from verified workbench code. Any production promotion follows separate contract review/controller gates and exact live-change approval. No implementation commit/push here; existing Stage0/1 product tree remains untouched.
+
+## Independent review round 1
+
+Initial shim suite40GREEN (controller2.33s/reviewer2.38s), actualstub18RED. Reviewer CHANGES REQUESTED: same-path registered-job mismatch can pass source-path-only ownership; nonzero launchctl rejects lacked required private diagnostics. Updated spec now pins loaded argv/cwd/path identity and fixed-stage/code diagnostics. Implementer adds deliberate RED cases for same-path loaded-program/arguments/cwd mismatches and print/bootstrap/kickstart/ownership rejections before GREEN. Exact native print identity format remains a controller empirical gate; unsupported output must fail closed, never assume ownership. No native job or production change yet.
