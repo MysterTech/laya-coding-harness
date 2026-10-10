@@ -8,3 +8,7 @@ Contract: Stage1 design C9; shipping source/config unchanged. User authorized ta
 4. One instrumented real startup and quit/reopen, then analyze metadata and restore production definitions. Any production fix requires root-cause evidence and a separate docs-first workbench pass.
 
 No unexecuted code blocks are included. Verified files/results will be generated after preflight.
+
+## Review round 1 requirements
+
+Independent review identified a C9 test gap: pin the exact systemMessage, fake answers, suggestion and checkpoint provenance in the refused-launch/predict scenario, and exact routing for both SS and UPS. These assertions implement the existing unchanged-output requirement; no advisor contract change. Execute behavioral mutation RED and corrected GREEN before generating final literal blocks.
