@@ -43,6 +43,12 @@ Generate/check with `.venv/bin/python -B .workbench/gen_stage1_plan.py` and `--c
 
 Intentional Stage 0 plan integration drift after promotion is limited to laya_harness/client.py, __main__.py and commands.py. The new Stage 1 blocks supersede those final forms. Preserve the old plan and original workbench; other Stage 0 file bytes must match that baseline. New Codex files are additions, not retroactive changes to the Stage 0 plan.
 
+## Controller promotion and final automated gates
+
+The controller promoted all 16 literal blocks after plan commit 612def0. Every block matches both workbench and repo bytes. Existing Stage 0 baseline differs only in client.py, __main__.py and commands.py, as declared above. Final repo `.venv/bin/python -m pytest -q`: **487 passed, 1 deselected in 95.91 s**. Controller-only `.venv/bin/python -m pytest -q -m real_model`: **1 passed, 487 deselected in 3.72 s**. All state used by these gates was temporary; pinned weights were read offline. Whitespace checks passed.
+
+The actual prepared replacement `.workbench/codex-production-hooks.draft.json` was built by the promoted native command builder and tested with a temporary Codex/laya home and free port. Exact registered SessionStart: exit 0, empty stdout, ready after 175.6 ms. Exact UserPromptSubmit: exit 0, one exact both-lines systemMessage, one Codex decided row with active-model/unknown-effort provenance, 61.5 ms. These timings are isolated process checks, not native C7 acceptance. Draft script evidence is regenerable at /private/tmp/laya-codex-stage1/verify-production-draft.py and production-draft-check.txt. The installed project file still contains only the approved temporary probe; replacement and native acceptance await approval/participation. No implementation commit or push has occurred.
+
 ## Verified implementation blocks
 
 These literal files are generated from the isolated GREEN workbench. Commands and results must be recorded in the verification section before promotion.
