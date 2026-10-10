@@ -11,3 +11,11 @@ Date: 2026-10-10 (Asia/Kolkata). Overall status: **in progress**. No Codex adapt
 - Exact script and installation draft are recorded in `docs/superpowers/plans/2026-10-10-laya-harness-codex-preflight.md`. Both plan blocks match executed workbench files byte for byte.
 
 The user approved both direction and exact temporary draft. Project `.codex/hooks.json` is installed byte-identically and verified mode 0600. No capture has occurred yet. User-level trust settings are unchanged; native hook review and live synthetic capture remain pending. Read-only app-bundle inspection confirms Settings → Hooks, Reload hooks, project sources and trust controls. Claude acceptance remains deferred until its weekly limit replenishes; no pending Claude gate is marked passed or waived.
+
+## First live synthetic turn
+
+User supplied `Screenshot 2026-10-10 at 9.42.06 AM.png`. It shows the synthetic 40-character prompt and successful reply `hook check complete.`, with no inline probe warning visible. Metadata capture confirms SessionStart and UserPromptSubmit executed in session `01a12402-8b93-7fb3-a041-51127b7634f3`, turn `01a12402-938f-79d2-927e-afe70a4bd8ab`, active model `gpt-6.1-sol`, permission mode `default`. SessionStart source was `startup`; prompt input had no source or agent fields. The project hook definitions match the approved draft, and both exact native trust hashes are recorded.
+
+Read-only inspection of the installed app's `local-conversation-turn`, `user-message` and `hook-stats-dialog` bundles shows hook warning entries are collected in Hook stats, opened through the hook-shaped message action icon. The dialog labels warning entries as Message. The screenshot establishes successful execution but not message delivery inside that panel. Expanded UserPromptSubmit history is the next capture; no additional prompt is needed for this display check.
+
+The sentinel is absent from the persisted rollout. This alone does not prove absence from model input. Context-separation evidence remains pending. Automatic inline visibility is not established; Stage 1 copy/mockups must reflect the actual native surface rather than assuming Claude's banner behavior.
