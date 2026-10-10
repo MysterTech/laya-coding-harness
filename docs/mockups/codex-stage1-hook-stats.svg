@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="850" viewBox="0 0 1000 850">
+<rect width="1000" height="850" fill="#141414"/>
+<style>text{font-family:Arial,sans-serif;fill:#f4f4f4;font-size:16px}.muted{fill:#b8b8b8;font-size:14px}.title{font-size:23px;font-weight:bold}</style>
+<rect x="25" y="35" width="950" height="185" rx="20" fill="#292929"/>
+<text x="50" y="67" class="title">Hook stats · LIGHT</text>
+<text x="50" y="93" class="muted">Completed · UserPromptSubmit · Project · Message</text>
+<text x="50" y="123">laya · light task (p=0.86) → GPT-6 Luna at low effort fits this task</text>
+<rect x="25" y="230" width="950" height="185" rx="20" fill="#292929"/>
+<text x="50" y="262" class="title">Hook stats · HEAVY</text>
+<text x="50" y="288" class="muted">Completed · UserPromptSubmit · Project · Message</text>
+<text x="50" y="318">laya · heavy task (p=0.91) → GPT-6 Astra at xhigh effort fits this task</text>
+<rect x="25" y="425" width="950" height="185" rx="20" fill="#292929"/>
+<text x="50" y="457" class="title">Hook stats · PLAN ONLY</text>
+<text x="50" y="483" class="muted">Completed · UserPromptSubmit · Project · Message</text>
+<text x="50" y="513">laya · reads like a multi-step change (p=0.88) →</text>
+<text x="50" y="538">Plan mode (/plan), or tell Codex to plan first</text>
+<rect x="25" y="630" width="950" height="185" rx="20" fill="#292929"/>
+<text x="50" y="662" class="title">Hook stats · BOTH</text>
+<text x="50" y="688" class="muted">Completed · UserPromptSubmit · Project · Message</text>
+<text x="50" y="718">laya · light task (p=0.86) → GPT-6 Luna at low effort fits this task</text>
+<text x="50" y="743">laya · reads like a multi-step change (p=0.88) →</text>
+<text x="50" y="768">Plan mode (/plan), or tell Codex to plan first</text>
+<text x="50" y="838" class="muted">Open the hook-shaped message action. Silent state has no laya message. Native controls are owned by Codex.</text>
+</svg>

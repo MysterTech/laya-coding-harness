@@ -162,3 +162,9 @@ Contract files here are:
 - Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Never commit `.venv/`, `.claude/settings.local.json`, `.claude/spike/`, or anything from
   `~/.laya-harness`. `.gitignore` covers the first three.
+
+## Stage 1 Codex supplement (2026-10-10)
+
+The user approved Codex support while Claude limits are exhausted; use Codex implementers and independent Codex reviewers under the temporary routing exception. The Stage 1 contract is `docs/superpowers/specs/2026-10-09-laya-harness-codex-design.md`. Existing automated gates and isolation rules apply, with config-default tests using temporary CODEX_HOME. The baseline full fake suite was re-executed: 345 passed, 1 deselected in 80.57 s. Preserve the Stage 0 verification copy; build in `.workbench/stage1-verify/`, generate literal plan blocks from executed files, commit docs before copying production code. WIP namespace is `refs/laywip/codex-stage1/`.
+
+Native UI evidence uses desktop runtime 0.162.0-alpha.2, not Homebrew CLI 0.155.1. User screenshots confirm the exact probe under Hook stats → Completed UserPromptSubmit / Project → Message, with 0 blocked/failed. The surface is user-opened Hook stats, not an automatic banner. Mockup: `docs/mockups/codex-stage1-hook-stats.svg`; QA: `docs/qa/codex-preflight.md` and subsequent production acceptance record. Screenshots remain user-controlled. Exact installation/replacement is reviewed before applying, and changed definitions are trusted only through the native UI. Claude acceptance remains deferred.
