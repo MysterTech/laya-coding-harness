@@ -1,6 +1,6 @@
 # macOS service launch — coalition-survival fix design
 
-Status: proposed for user review. No implementation or launchd job has been created.
+Status: user approved design and isolated temporary-job tests. Production promotion/live changes remain separately reviewed.
 Contract parents: umbrella design §4.2–§4.4, §5–§6, §8, §11; Codex design C1–C9. Purpose: repair native desktop shutdown survival without changing residency policy, classifier behavior or hook deadlines.
 
 ## Evidence and intended result
