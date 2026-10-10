@@ -83,3 +83,7 @@ laya-harness is a local "System 1" advisor for Claude Code. A hook sends each pr
 - Never use port 47913 or `~/.laya-harness`. Tests use a temporary `LAYA_HARNESS_HOME` and free ports; the test guard enforces this.
 - Never run `-m real_model` unless you are acting as the controller. It reads the pinned weights from `~/.laya-harness/models/`.
 - Never run `laya-harness setup`, `stop` or `mode` against the real home without the user.
+
+## Pending temporary Codex timing capture (2026-10-10)
+
+User said “lets push on”; controller prepared C8 timing instrumentation because persisted native receipts are unavailable. Spec C8 and `docs/superpowers/plans/2026-10-10-laya-harness-codex-timing.md` govern it. Local `.workbench/codex-timing/capture.py` and test_capture.py: actual RED, 18 GREEN, independent review APPROVED. Two literal plan blocks match. WIP ref `refs/laywip/codex-timing/task-1` stores the isolated tool snapshot; no advisor code changes. The exact private draft/diff `.workbench/codex-timing/hooks.draft.json` / hooks.diff changes only the two commands to the verified wrapper. Production hooks are still installed. Await user approval of the exact temporary diff, then install privately, have user Reload hooks/review native trust, baseline and run `.workbench/codex-timing-native-steps.md`. Restore production definitions afterward. No timing or 20-turn gate is marked passed. Real configuration remains unchanged. Claude acceptance remains deferred; implementation uncommitted, no push.
