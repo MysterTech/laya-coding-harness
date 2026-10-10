@@ -82,7 +82,7 @@ def definition(home, interpreter):
            'WorkingDirectory': str(home), 'EnvironmentVariables': {
                'LAYA_HARNESS_TEST': '1', 'LAYA_HARNESS_HOME': str(home),
                'CODEX_HOME': str(home / 'codex'), 'HF_HUB_OFFLINE': '1'},
-           'KeepAlive': False, 'RunAtLoad': False,
+           'KeepAlive': False, 'RunAtLoad': False, 'ThrottleInterval': 0,
            'StandardInPath': '/dev/null', 'StandardOutPath': '/dev/null',
            'StandardErrorPath': str(home / 'service.log')}
     return home / (label + '.plist'), job
@@ -339,9 +339,10 @@ def test_exact_definition_and_privacy(home):
     path, job = probe.definition(home, sys.executable)
     assert job['ProgramArguments'] == [sys.executable, '-I', '-m', 'laya_harness.service']
     assert job['KeepAlive'] is False and job['RunAtLoad'] is False
+    assert job['ThrottleInterval'] == 0
     assert job['WorkingDirectory'] == str(home)
     assert job['EnvironmentVariables'] == {'LAYA_HARNESS_TEST': '1', 'LAYA_HARNESS_HOME': str(home), 'CODEX_HOME': str(home / 'codex'), 'HF_HUB_OFFLINE': '1'}
-    assert set(job) == {'Label','ProgramArguments','WorkingDirectory','EnvironmentVariables','KeepAlive','RunAtLoad','StandardInPath','StandardOutPath','StandardErrorPath'}
+    assert set(job) == {'Label','ProgramArguments','WorkingDirectory','EnvironmentVariables','KeepAlive','RunAtLoad','ThrottleInterval','StandardInPath','StandardOutPath','StandardErrorPath'}
     assert job['StandardInPath'] == job['StandardOutPath'] == '/dev/null'
     assert job['StandardErrorPath'] == str(home / 'service.log')
     assert str(path).startswith(str(home))
@@ -626,3 +627,5 @@ def test_rejected_commands_private_diagnostics(home,stage,capsys):
 ## Native round 2 contract correction
 
 Round1 startup/decided/logappend passed; controller healthpolling invalidated idle measurement and was corrected (temporaryjobcleanupverified). Round2 quiet idleexit0/no restart passed, refused-only restarted once, explicitSIGTERM/no restart passed. Subsequent rapidkickstart exceeded0.6s commandbudget. Installedlaunchd.plist manual documents default ten-second launch throttling. Spec now requires ThrottleInterval0 for explicit on-demand restart, with KeepAlivefalse/RunAtLoadfalse unchanged. Add behavioralRED definitiontest thenGREEN, regenerate literalblocks and independentlyreview before native rerun. Both temporaryjobs removed and absent. No production/liveconfiguration changes.
+
+Throttle correction actualRED1failed47passed2.41s, controller48GREEN2.40s, independent48GREEN2.37s **APPROVED for native rerun**. WIPtask-1.r3 aacaa8dbff2170b9e44a25e6144c04083535728a. Literalblocks regenerated from executedfiles before native use; no shipping changes.
