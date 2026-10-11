@@ -191,3 +191,8 @@ Approvedstop2 consumed PID94777 exit0. Heavy.config.json nowinstalledbyte-identi
 ### HEAVY passed; PLAN-ONLY awaiting capture
 
 Heavy screenshot/exactrow/independentvisual APPROVED: Runs6/Blocked0/Failed0, onlyheavyp.91→GPT-6Astra xhigh; turn01a12934-fa64-70d1-b0d8-7df0ae4720b5 decidedfake35.3ms, diagnosticgrowth0. Privateheavy-observed.json. Approvedstop3 consumedPID95869 exit0. Plan-only.config.json installedbyte-identical0600/confirmeddown; plan-only-baseline.json decisions157626/client760/service12330/launcher0. Hooksunchanged. Nextfreshprojectchat `Reply with just: display check.`; expect onlyplanp.88→Plan mode(/plan), or tellCodex toplanfirst. ExpandedprojectUPS screenshot. Twoapprovedstopsremain silent/realrestore; noaskagain. No configchangesduringcapture/hookreload. Implementationuncommitted/nopush.
+
+
+### PLAN-ONLY passed; SILENT awaiting capture
+
+Plan-only screenshot/exactrow/independentvisual APPROVED: Runs6/Blocked0/Failed0, onlyplanp.88 nativecopy; turn01a12937-38bb-7bd0-95b6-f1d932ec0549 decidedfake48.3ms/coldfalse, modelbelow_threshold, diagnosticgrowth0. Privateplan-only-observed.json. Approvedstop4 consumedPID96483 exit0. Silent.config.json installedbyte-identical0600/confirmeddown; silent-baseline.json decisions166317/client760/service12330/launcher0. Hooksunchanged. Nextfreshprojectchat `Reply with just: display check.`; expect completedUPSwithNO Message/noadvisory. ExpandedprojectUPS screenshot. Finalapprovedstop remainsfor exactrealrestore aftercapture; do notaskagain. No configchangesduringcapture/hookreload. Implementationuncommitted/nopush.

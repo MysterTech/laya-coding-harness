@@ -156,3 +156,8 @@ Approved stop2 PID94777 exit0; heavy draft installed0600/byte-identical, confirm
 Heavy native display passed (2026-10-11): screenshot09:55:21 showsRuns6/Blocked0/Failed0, completedprojectSS/UPS, exact heavyp.91→GPT-6Astra xhigh only. Independent visualreview APPROVED, legible singleline. Unique displaycheck turn01a12934-fa64-70d1-b0d8-7df0ae4720b5/session01a12934-f651-7143-8cb4-6d1235d3de26, decided/fake, row35.3ms/coldfalse. Client/service/launcherdiagnosticgrowth0. Otherthreebaseline rows are outside theunique capture. Reducedheavy-observed.json.
 
 Approvedstop3 PID95869 exit0; plan-onlydraft installed0600/byte-identical, confirmeddown. Baseline decisions157626/client760/service12330/launcher0bytes, hooksunchanged. Nativeplan-onlycapturepending; twoapprovedstopsremain silent/realrestore.
+
+
+Plan-only native display passed (2026-10-11): screenshot09:59:07 showsRuns6/Blocked0/Failed0, completedprojectSS/UPS, exact planp.88→Plan mode(/plan), or tellCodex toplanfirst only. Independent visualreview APPROVED, legible singleline/no clipping. Unique turn01a12937-38bb-7bd0-95b6-f1d932ec0549/session01a12937-33e8-74f1-9b9c-bea73e1e9a32, decided/fake, row48.3ms/coldfalse; modelbelow_threshold/planunsuppressed. Client/service/launcherdiagnosticgrowth0; threeotherrows outsidecapture. Reducedplan-only-observed.json.
+
+Approvedstop4 PID96483 exit0; silentdraft installed0600/byte-identical, confirmeddown. Baseline decisions166317/client760/service12330/launcher0bytes, hooksunchanged. Nativesilentcapturepending; finalapprovedstop remains for exactrealrestore.
