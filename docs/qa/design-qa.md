@@ -19,3 +19,19 @@ The heavy check has one new decision row past the heavy baseline (2118 bytes), s
 The service was stopped before changing to the both-lines fake profile, following explicit user approval. No configuration changes may occur during the next capture. The final visual verdict requires screenshots compared against the copy deck and `docs/mockups/stage0-check1-*.png`; pasted text does not establish layout, wrapping or visual fidelity.
 
 The plan-only check has one new human decision row past the 4303-byte baseline, status `decided`, session `47577b93-27ea-467c-afe9-978919681891`, prompt `ac5ed00a-5330-4b0a-ac0f-46b73ba7c594`. Its recorded hook duration is **62.8 ms**, `cold: false`, with the exact plan hint, the model line suppressed as `below_threshold`, permission mode `auto`, fake-model provenance, no truncation and zero dropped characters. No client/service diagnostic bytes were added. After this observation, the user approved the both-profile transition; that profile is now configured for the next capture.
+
+
+## Parked Claude acceptance (2026-10-11)
+
+User-approved umbrella §8.1 parks the remaining checks on `codex/claude-acceptance` while
+main proceeds with Stage 2. This branch starts from the verified shared/Codex development
+baseline. Prior text describes historical captures; current live configuration has since
+been restored to real/show for Codex. Do not assume fake-both is still installed. Saved
+private baselines/config drafts remain in the original workbench. Resume by reviewing the
+exact proposed transition with the user; old service-stop approvals are consumed.
+
+Remaining: fake-both capture, screenshots for each required Claude copy state, real-model
+output, 20-prompt no-harm/deadline sample, refused/missing-model/nonresponsive down paths,
+cold samples, off behavior, independent visual comparison, and exact user-level settings
+installation approval. Do not re-use Codex screenshots as Claude evidence. Any fixes merge
+back to main through docs-first/TDD/review and shared-core gates; no automatic hook editing.

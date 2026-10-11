@@ -285,3 +285,14 @@ Saved native observations count18distincthumanprompts: BOTH1/warmreal1/cold3/dia
 ### Final native UI count complete (2026-10-11)
 
 Twofinalchecks in `Run final hook check` matchedunique turns01a1298e-5097-7513-bda8-1906db208ade/01a1298f-82db-7ae3-b94e-24b12038e675; screenshotsRuns6/2Blocked0Failed0/completedUPS/no native timeout. Connectorconfirmsbothcompletederrornull/expectedreplies. Bothdecidedreal,row1149.9/584.7ms supportonly; firstexactlightp.92Lunalow,secondnot_first_prompt/planbelowthreshold. Privatefinal-hooks-observed.json0600. QA censusnow20distinctUI-evidencedhumanprompts acrosschecks; C7UIcountclosed withoutwaivingcontract orrecoveringoriginaltimingchatstats. Original20externaltimingsamplevalidseparately. Codexacceptancegatesobservedwithbackgroundpermissionqualification/latencyvariabilityretained. Claudeacceptancestilldeferred; finalimplementationcommit/pushpendingprocedure. No livechanges.
+
+
+### Development baseline gates and parking procedure
+
+Userapprovedsplitsequence45ad5cc; final49literalfilesmatch/Stage1check16match.
+Sandboxfullgatefailedsocketpermissions; accessrerun533passed1failed(UPS trickle4.9866s
+whilecachedrealconcurrent), isolatedtrickle2passed, serialfull534passed1deselected100.31s;
+cachedreal1passed534deselected3.84s. Failureobservationretained/causenotproved/noboundsrelaxed.
+Commitverifiedimplementationafterdocs, createcodex/claude-acceptanceatbaselinewithoutcheckout;
+retainallWIPrefs/workbench. ClaudeQAhasexplicitremainingchecks/currentrealconfignote.
+Stage2Aofflinewrittenproposalexistsbutnotapprovedforimplementation. No push/livechanges.

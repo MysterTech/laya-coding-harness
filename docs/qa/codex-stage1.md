@@ -1,6 +1,6 @@
 # Codex Stage 1 verification and acceptance
 
-Date: 2026-10-10 (Asia/Kolkata). Status: **automated gates passed; native production acceptance pending**.
+Date: 2026-10-10 (Asia/Kolkata). Status: **Codex documented native acceptance observed; Claude acceptance parked separately**.
 
 The native capability probe is recorded separately in codex-preflight.md. It establishes completed delivery in user-opened Hook stats, not an inline banner. The production mockup/copy contract is docs/mockups/codex-stage1-hook-stats.svg and the Stage 1 design C4/C7.
 
@@ -176,7 +176,7 @@ Approvedstop5 PID97641 exit0; exactsavedrealconfiguration restoredatomically0600
 | Three cold startup samples | Recorded3/3 first decided profiles and bounded child durations; before launch ownership change. New broker real SessionStart observed2801.698ms. |
 | Quit/reopen survival | Passed with user-enabled ChatGPT background activity; disabled-setting teardown limitation recorded in contract. |
 | Twenty human turns | Original 20-prompt timing/exit0/completion sample passed; native UI evidence now covers 20 distinct prompts across checks, as censused below. Original timing-chat Hook stats remain unavailable. |
-| Native down/missing-model/nonresponsive/off | Passed via approved native batch; timing-hook restoration awaits native reload. |
+| Native down/missing-model/nonresponsive/off | Passed via approved native batch; exact production hooks restored and native reload confirmed. |
 | Claude acceptance | Deferred independently. |
 
 No final acceptance, implementation commit or push is inferred.
@@ -292,3 +292,32 @@ User screenshots at 11:33:34 and 11:34:11 local show Runs 6 and 2 respectively, 
 Supported read_thread confirms both turns completed with error null and respective replies `final hook check 1.` and `final hook check 2.`. Initial exact prompt match returned no rows because the actual inputs contain literal Markdown backticks; unique turn IDs and observed text establish the match without altering runtime data. Reduced record: `.workbench/codex-final-hooks-observed.json` (0600).
 
 The census now covers **20 distinct human prompts** with zero native Blocked/Failed and no visible native hook-timeout notice. This closes the outstanding C7 native UI sample-count requirement across checks; original 20-prompt external timing evidence remains separate and valid. It does not recover or verify the original timing-chat Hook stats, imply all census prompts have complete-process timing receipts, or waive the independent Claude acceptance. No source, live config or hook changes occurred. Codex documented acceptance gates are now observed, with the macOS background-permission qualification and recorded latency variability retained. Final implementation commit/push remains pending the project’s acceptance procedure.
+
+
+### Development baseline final gates (2026-10-11)
+
+The user approved umbrella §8.1: commit the verified implementation on main, preserve
+Claude acceptance on codex/claude-acceptance, and proceed with Stage 2 on main. This is a
+development baseline, not completed Claude acceptance. All 49 final implementation files
+match governing literal plan blocks with Stage 1/macOS supersession; Stage 1 generator
+check independently confirms its 16 blocks.
+
+Final controller commands/results:
+- `.venv/bin/python -m pytest -q` inside the sandbox: 8 failed, 312 passed, 1 deselected,
+  214 errors in 6.73 s; temporary socket binds denied (PermissionError).
+- Same fake command with localhost access: 1 failed, 533 passed, 1 deselected in 103.43 s.
+  The UPS trickling-listener test observed 4.9866 s versus its 2 s bound. Real-model loading
+  ran concurrently; the cause is not established and the observation is retained.
+- `.venv/bin/python -m pytest -q tests/test_client_process.py -k trickling_listener` alone:
+  2 passed, 94 deselected in 2.59 s.
+- Full fake command serially, no concurrent real-model gate: 534 passed, 1 deselected in
+  100.31 s. No tests or deadline bounds were relaxed.
+- `.venv/bin/python -m pytest -q -m real_model`: 1 passed, 534 deselected in 3.84 s;
+  cached weights only, temporary home/free port, no download.
+- `.venv/bin/python -B .workbench/gen_stage1_plan.py --check`: 16 blocks match.
+- Controller literal-byte composition: 34 Stage 0 final blocks, superseded by 16 Stage 1
+  and 3 macOS blocks, yields 49 final files and zero drift.
+- `git diff --check`: clean.
+
+No private config/hooks/workbench/session data enters the implementation commit. Preserve
+existing WIP refs, reviews and private evidence until Claude acceptance completes. No push.
