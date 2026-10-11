@@ -167,3 +167,10 @@ Next root-cause-based architecturalrevision beforecode: investigate OS-supported
 ### Native survival passed with background activity enabled (2026-10-11)
 
 User identified ChatGPT background activity was disabled, enabled it and requested controlled repeat. FreshbaselinePID91932; userCmd+Q/reopen; after90.881s (<900idle), SAME PID91932 readyreal, exactjob/runs1 unchanged, config/hooks hashes unchanged. Private .workbench/macos-launch/background-enabled-before.json/background-enabled-after.json. C7survival passes in enabledconfiguration; prior disabledsetting jobteardown remainsvalidrecord and limitation. Do not infer disabledsetting survival or generalnativeacceptance. No code/config/hook/OSchanges performed bycontroller forrepeat; setting changed byuser. No furtherarchitecturalrewrite justifiedbythisresultalone. Next reconcile/docs-first the observed backgroundpermission dependency beforefinalacceptance and continue remainingC7gates; no additionalstop currentlyauthorized. Productimplementationuncommitted/nopush; Claudeacceptancedeferred.
+
+
+### Remaining Codex display acceptance prepared (2026-10-11)
+
+User said goforit fordocsfirst/remainingacceptance. Backgroundpermission prerequisite recorded in authoritativecontracts andREADME commit80af706, enablednativepass preserved/disabledlimitation documented. Fourprivateconfigs/diffs light/heavy/plan-only/silent plus exactrealrollback in .workbench/codex-remaining. Controllerpreflight verified SS/UPS exit0/stderrblank/exactcopy/onefake decidedrow each in temp homes/freeports. Initialsilent assertion usedemptystring instead of documentednull; correctedcheck and reranallfour. No product/liveconfig/hookchanges. New acceptanceplan on disk recordssequence and observations.
+
+Next exactdraftbatchapproval covers fivehealth-verifiedstops before fourfake transitions and realrestore. Nativecaptures requireuser freshprojectchat/displaycheck and expandedUPS screenshot. BOTHalreadydone. No newhookreloadneeded; no configchangesmidcapture. Aggregate20UI/down/off/Claudechecks remainpending. Implementationuncommitted/nopush.

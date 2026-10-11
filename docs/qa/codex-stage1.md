@@ -138,3 +138,8 @@ Next productionfix must establish OS-owned service launch outside desktopcoaliti
 ### Post-fix native survival: background activity comparison (2026-10-11)
 
 The promoted launchd broker passed repo gates (534 fake tests and cached real-model gate). First native quit/reopen with ChatGPT background activity disabled changedPID90998→91932 within197.549s; loginwindow explicitly unloaded the exact job because it was not managed by BTM. After the user enabled background activity, a controlled quit/reopen with unchanged code/hooks/config retainedPID91932 ready/real after90.881s, samejob/runs1. C7 survival passed for the enabled configuration, with the disabled-setting limitation preserved. Private macos-launch/background-enabled-before.json and background-enabled-after.json. Remaining native acceptance gates and Claude acceptance are not inferred from this result.
+
+
+### Remaining display preparation (2026-10-11)
+
+Background dependency is now documented in launch/umbrella/Codex contracts and README (80af706). Four private fake configuration drafts plus exact real rollback/diffs are prepared under .workbench/codex-remaining; isolated controller preflight passed exact light/heavy/plan-only/silent copy, exit0/empty stderr and one decided fake row each. Native screenshots not inferred. Live config remains real/show; next exact batch review authorizes five stops/config transitions and user fresh-chat captures. Plan: 2026-10-11-laya-harness-codex-remaining-acceptance.md.
