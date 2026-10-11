@@ -176,7 +176,7 @@ Approvedstop5 PID97641 exit0; exactsavedrealconfiguration restoredatomically0600
 | Three cold startup samples | Recorded3/3 first decided profiles and bounded child durations; before launch ownership change. New broker real SessionStart observed2801.698ms. |
 | Quit/reopen survival | Passed with user-enabled ChatGPT background activity; disabled-setting teardown limitation recorded in contract. |
 | Twenty human turns | Timing/exit0/completion sample passed; aggregate native Hook stats evidence still pending. |
-| Native down/missing-model/nonresponsive/off | Pending. Isolated fake tests do not substitute native evidence. |
+| Native down/missing-model/nonresponsive/off | Passed via approved native batch; timing-hook restoration awaits native reload. |
 | Claude acceptance | Deferred independently. |
 
 No final acceptance, implementation commit or push is inferred.
@@ -227,3 +227,10 @@ Approvedstop4 consumedPID3904 exit0. Exactoff.config.json installedatomically060
 Twouser screenshots11:00:46/11:01:02 show Runs6/2, completedUPS/noMessage/Blocked0/Failed0. Decisionbytes190000unchanged; all20sessionJSONhashesunchanged; jobruns10/serviceabsent. Matchingoffphase receiptsSS77.238ms/UPS75.861ms and132.146ms exit0/notimeout; separatecontroller73.607ms. Privateoff-observed.json; offpassed.
 
 Approvedstop5 consumed(no runningservice). ExistingtestedListener(hang) startedcontroller-ownedPID5813, execsession77701, port64972loopbackonly, hard600s lifetime from~05:31:53Z. Exactnonresponsive.config.json installedatomically0600 afterbound+timeoutverified; neverstandard47913. Nativebaseline05:32:07.736Z: decisions190000/client836/service15230/launcher0/receipts6119bytes, jobruns10; hooksunchanged. Allfivestopauthorizationsconsumed. Nextuserfreshprojectchat `Reply with just: listener check.` within5min; expandedprojectUPS screenshot/noMessage/completedreply. Requiretimeoutrow/timedreceipt≤1.6s/nojobrunincrease. Do notuse stop againstlistener. Cleanup onlyownedexecsession via Ctrl+C ornaturalexpiry; restoreexactrealconfig andproductionhooksperalreadyapprovedbatch, nativeReloadneededafterrestore. If listenerexpires beforehumanprompt, captureinvalid; do not inferpass; avoidunapprovedrealstop ifunexpectedserviceappears. No otherlivechanges/productcommit/push.
+
+
+### NONRESPONSIVE passed; exact production restoration awaiting native reload
+
+User screenshot11:05:16 Runs6/Blocked0/Failed0, completedprojectUPS/noMessage. Unique listenercheck turn01a12974-f17b-7a83-bf33-c4b02bc6b7d8/session01a12974-e92c-7a91-ae30-41c165e1af30 timeout/shown_textnull, row1405.3ms. Matchingadvisor receipt1432.111ms/exit0/notimeout. Firstcontroller correlation assumedreceiptwithin.5s ofrowtimestamp; rowtimestamp precedesprediction, so corrected to bounded1.7sendwindowandmatchedunique receipt. This ischeckassumption, notproductchange. Ownedjobruns10unchanged/service.logunchanged, nospawn. SeparatecontrollerUPS1486.195ms/exit0/notimeout outsidecapture. Private nonresponsive-observed.json.
+
+Controlledlistenerexecsession77701/PID5813 terminatedbyCtrl+C; port64972refusedverified. Exactrealconfig restoredatomically0600SHA1a1f5b7c451aa559684d35a587e914f0269dfd8979c40162171f41a06001170f; productionhooksrestored0600SHAeb44c8089814b2afc08b0b308fd70e0c6751cb251d6978b78d22325494af5591. Realserviceconfirmeddown; no additionalstopneeded/authorized. Private restored.json. NativeReload/reviewrequired; loadedtimingdefinitionsmaystillrun untilreload. Allfivestopauthorizationsconsumed. NativeC7down/missing/off/nonresponsive passed; aggregate20Hookstatsevidence remainspending; Claudeacceptanceindependent/deferred. No sourcechanges/implementationcommit/push.
