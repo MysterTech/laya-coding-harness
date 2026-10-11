@@ -151,3 +151,8 @@ Remaining display batch approved (2026-10-11): all four exact fake drafts and re
 Light native display passed (2026-10-11): screenshot09:51:40 showsRuns6/Blocked0/Failed0, completedprojectSS/UPS, exact lightp.86→GPT-6Lunalow only. Independent visualreview APPROVED, legible singleline. Matched turn01a12931-6b93-7720-9149-acb0eeb2c701/session01a12931-6751-7b70-9db0-0ea96b1b4feb, decided/fake, row31.8ms/coldfalse, no newclient/service/launcherdiagnostics. First matching check expected no trailing newline; normalized strip and matchedunique displaycheck row. AnotherfreshREADMEprompt and controllerfollowup are separate rows, notduplicatecapture. Reduced light-observed.json.
 
 Approved stop2 PID94777 exit0; heavy draft installed0600/byte-identical, confirmeddown. Heavy baseline decisions149088/client760/service12330/launcher0bytes; hooksunchanged. Nativeheavycapturepending; threeapprovedstopsremain forplan-only/silent/realrestore.
+
+
+Heavy native display passed (2026-10-11): screenshot09:55:21 showsRuns6/Blocked0/Failed0, completedprojectSS/UPS, exact heavyp.91→GPT-6Astra xhigh only. Independent visualreview APPROVED, legible singleline. Unique displaycheck turn01a12934-fa64-70d1-b0d8-7df0ae4720b5/session01a12934-f651-7143-8cb4-6d1235d3de26, decided/fake, row35.3ms/coldfalse. Client/service/launcherdiagnosticgrowth0. Otherthreebaseline rows are outside theunique capture. Reducedheavy-observed.json.
+
+Approvedstop3 PID95869 exit0; plan-onlydraft installed0600/byte-identical, confirmeddown. Baseline decisions157626/client760/service12330/launcher0bytes, hooksunchanged. Nativeplan-onlycapturepending; twoapprovedstopsremain silent/realrestore.

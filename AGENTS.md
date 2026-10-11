@@ -186,3 +186,8 @@ User approved allfourexactconfigdiffs plus exactrealrestoration andfivehealth-ve
 Light screenshot/exactrow/independentvisual APPROVED: Runs6/Blocked0/Failed0, onlylightp.86→GPT-6Lunalow; turn01a12931-6b93-7720-9149-acb0eeb2c701 decidedfake31.8ms, diagnosticgrowth0. .workbench/codex-remaining/light-observed.json. Twootherbaseline rows wereanotherfreshREADMEprompt andcontrollerfollowup; do notcountasduplicates.
 
 Approvedstop2 consumed PID94777 exit0. Heavy.config.json nowinstalledbyte-identical0600/confirmeddown; heavy-baseline.json decisions149088/client760/service12330/launcher0. Hooksunchanged. Nextfreshprojectchat `Reply with just: display check.`; expect onlyheavyp.91→GPT-6Astra xhigh. ExpandedprojectUPS screenshot. Threealreadyapprovedstops remainforplan-only/silent/realrestore; no repeatedpermissionquestion. No configchangesduringcapture orhookreload. Implementationuncommitted/nopush.
+
+
+### HEAVY passed; PLAN-ONLY awaiting capture
+
+Heavy screenshot/exactrow/independentvisual APPROVED: Runs6/Blocked0/Failed0, onlyheavyp.91→GPT-6Astra xhigh; turn01a12934-fa64-70d1-b0d8-7df0ae4720b5 decidedfake35.3ms, diagnosticgrowth0. Privateheavy-observed.json. Approvedstop3 consumedPID95869 exit0. Plan-only.config.json installedbyte-identical0600/confirmeddown; plan-only-baseline.json decisions157626/client760/service12330/launcher0. Hooksunchanged. Nextfreshprojectchat `Reply with just: display check.`; expect onlyplanp.88→Plan mode(/plan), or tellCodex toplanfirst. ExpandedprojectUPS screenshot. Twoapprovedstopsremain silent/realrestore; noaskagain. No configchangesduringcapture/hookreload. Implementationuncommitted/nopush.
