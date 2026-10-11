@@ -179,3 +179,10 @@ Next exactdraftbatchapproval covers fivehealth-verifiedstops before fourfake tra
 ### Remaining display batch approved; LIGHT awaiting capture
 
 User approved allfourexactconfigdiffs plus exactrealrestoration andfivehealth-verifiedstops. Stop1 consumed PID91932 exit0. Approvedlight.config.json installedatomically0600, byte-identical; serviceconfirmeddown. Private .workbench/codex-remaining/light-baseline.json: decisions142009/client760/service12330/launcher0bytes, config4371c34a45374a1cf696a7c134e7bf08f867443953be9bfc4c2d1c26f4e4f820; productionhooksunchanged eb44c8089814b2afc08b0b308fd70e0c6751cb251d6978b78d22325494af5591. Fourapprovedstops remainforheavy/plan-only/silent/realrestore; do not askagain. Nextuserfreshprojectchat `Reply with just: display check.` then expandedprojectUPS Hookstats screenshot. Expect lightp.86→GPT-6Lunalow only; compareunique row/provenance/copy andzeroBlocked/Failed. No configchangesduringcapture, nohookreloadneeded. Do notsendextracontrollerpromptbeforefreshchat (it couldrestartservice, though first-linegate isperchat). Implementationuncommitted/nopush; othernative/Claudegatespending.
+
+
+### LIGHT passed; HEAVY awaiting capture
+
+Light screenshot/exactrow/independentvisual APPROVED: Runs6/Blocked0/Failed0, onlylightp.86→GPT-6Lunalow; turn01a12931-6b93-7720-9149-acb0eeb2c701 decidedfake31.8ms, diagnosticgrowth0. .workbench/codex-remaining/light-observed.json. Twootherbaseline rows wereanotherfreshREADMEprompt andcontrollerfollowup; do notcountasduplicates.
+
+Approvedstop2 consumed PID94777 exit0. Heavy.config.json nowinstalledbyte-identical0600/confirmeddown; heavy-baseline.json decisions149088/client760/service12330/launcher0. Hooksunchanged. Nextfreshprojectchat `Reply with just: display check.`; expect onlyheavyp.91→GPT-6Astra xhigh. ExpandedprojectUPS screenshot. Threealreadyapprovedstops remainforplan-only/silent/realrestore; no repeatedpermissionquestion. No configchangesduringcapture orhookreload. Implementationuncommitted/nopush.

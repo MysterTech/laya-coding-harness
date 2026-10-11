@@ -146,3 +146,8 @@ Background dependency is now documented in launch/umbrella/Codex contracts and R
 
 
 Remaining display batch approved (2026-10-11): all four exact fake drafts and real restoration, with five health-verified stops. Stop1 PID91932 exit0; light draft installed0600/byte-identical, confirmed down, productionhooks unchanged. Light baseline decisions142009/client760/service12330/launcher0bytes. Native light capture pending; four remaining stops already authorized. No result inferred from isolated preflight.
+
+
+Light native display passed (2026-10-11): screenshot09:51:40 showsRuns6/Blocked0/Failed0, completedprojectSS/UPS, exact lightp.86→GPT-6Lunalow only. Independent visualreview APPROVED, legible singleline. Matched turn01a12931-6b93-7720-9149-acb0eeb2c701/session01a12931-6751-7b70-9db0-0ea96b1b4feb, decided/fake, row31.8ms/coldfalse, no newclient/service/launcherdiagnostics. First matching check expected no trailing newline; normalized strip and matchedunique displaycheck row. AnotherfreshREADMEprompt and controllerfollowup are separate rows, notduplicatecapture. Reduced light-observed.json.
+
+Approved stop2 PID94777 exit0; heavy draft installed0600/byte-identical, confirmeddown. Heavy baseline decisions149088/client760/service12330/launcher0bytes; hooksunchanged. Nativeheavycapturepending; threeapprovedstopsremain forplan-only/silent/realrestore.
