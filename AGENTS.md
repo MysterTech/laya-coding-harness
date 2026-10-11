@@ -196,3 +196,12 @@ Heavy screenshot/exactrow/independentvisual APPROVED: Runs6/Blocked0/Failed0, on
 ### PLAN-ONLY passed; SILENT awaiting capture
 
 Plan-only screenshot/exactrow/independentvisual APPROVED: Runs6/Blocked0/Failed0, onlyplanp.88 nativecopy; turn01a12937-38bb-7bd0-95b6-f1d932ec0549 decidedfake48.3ms/coldfalse, modelbelow_threshold, diagnosticgrowth0. Privateplan-only-observed.json. Approvedstop4 consumedPID96483 exit0. Silent.config.json installedbyte-identical0600/confirmeddown; silent-baseline.json decisions166317/client760/service12330/launcher0. Hooksunchanged. Nextfreshprojectchat `Reply with just: display check.`; expect completedUPSwithNO Message/noadvisory. ExpandedprojectUPS screenshot. Finalapprovedstop remainsfor exactrealrestore aftercapture; do notaskagain. No configchangesduringcapture/hookreload. Implementationuncommitted/nopush.
+
+
+### All fixed display states passed; exact REAL configuration restored
+
+Silent screenshot/unique row/independentvisual APPROVED: Runs6/Blocked0/Failed0, completedUPSwithnoMessage; turn01a1293a-062b-7690-b178-fdf725900e51 decidedfake31.9ms, shown_textnull, bothbelow_threshold, diagnosticgrowth0. Alllight/heavy/plan-only/both/silent nativecopy+visual states nowpassed.
+
+Finalapprovedstop5 consumedPID97641 exit0; savedreal.config.json restoredbyte-identicalatomically0600, real/show/fake_answersremoved; confirmeddown. ConfigSHA1a1f5b7c451aa559684d35a587e914f0269dfd8979c40162171f41a06001170f; productionhooksunchangedSHAeb44c8089814b2afc08b0b308fd70e0c6751cb251d6978b78d22325494af5591. Reduced silent-observed.json/real-restored.json in .workbench/codex-remaining. Allfivebatchstopauthorizationsconsumed; nofurtherrealstops/configchangesapproved.
+
+Nextprepareconcrete nativeC7down/missing-model/nonresponsive/offprotocol and aggregate20Hookstatsevidence; docsfirst/testedprivate draftsbeforeliveapproval. Cold3samples/realprediction/permission-enabledsurvival alreadyobserved; retainlatencyvariability/disabledpermissionlimitation. Claudeacceptancedeferred. No finalacceptance/productcommit/push.

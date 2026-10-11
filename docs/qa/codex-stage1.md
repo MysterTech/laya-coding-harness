@@ -161,3 +161,22 @@ Approvedstop3 PID95869 exit0; plan-onlydraft installed0600/byte-identical, confi
 Plan-only native display passed (2026-10-11): screenshot09:59:07 showsRuns6/Blocked0/Failed0, completedprojectSS/UPS, exact planp.88→Plan mode(/plan), or tellCodex toplanfirst only. Independent visualreview APPROVED, legible singleline/no clipping. Unique turn01a12937-38bb-7bd0-95b6-f1d932ec0549/session01a12937-33e8-74f1-9b9c-bea73e1e9a32, decided/fake, row48.3ms/coldfalse; modelbelow_threshold/planunsuppressed. Client/service/launcherdiagnosticgrowth0; threeotherrows outsidecapture. Reducedplan-only-observed.json.
 
 Approvedstop4 PID96483 exit0; silentdraft installed0600/byte-identical, confirmeddown. Baseline decisions166317/client760/service12330/launcher0bytes, hooksunchanged. Nativesilentcapturepending; finalapprovedstop remains for exactrealrestore.
+
+
+Silent native display passed (2026-10-11): screenshot10:00:51 showsRuns6/Blocked0/Failed0, completedprojectSS/UPS with noMessage. Independent visualreview APPROVED. Unique displaycheck turn01a1293a-062b-7690-b178-fdf725900e51/session01a12939-fd1f-7ba0-96d3-1b0c2396e62e, decided/fake, row31.9ms/coldfalse, shown_textnull, model/plan bothbelow_threshold. Client/service/launcherdiagnosticgrowth0; onecontrollerfollowup outsidecapture. Reducedsilent-observed.json.
+
+Approvedstop5 PID97641 exit0; exactsavedrealconfiguration restoredatomically0600, model_modereal/modeshow/fake_answersremoved, confirmeddown. ConfigSHA1a1f5b7c451aa559684d35a587e914f0269dfd8979c40162171f41a06001170f; hooksunchangedSHAeb44c8089814b2afc08b0b308fd70e0c6751cb251d6978b78d22325494af5591. Allfivebatchstopauthorizationsconsumed. Private real-restored.json.
+
+## Current acceptance checklist (2026-10-11)
+
+| Gate | Current evidence |
+|---|---|
+| Fixed light/heavy/plan-only/both/silent copy and native visual states | Passed, independent visual approval and matching decided/fake rows. |
+| Real prediction | Observed decided/real; latency variability retained. |
+| Three cold startup samples | Recorded3/3 first decided profiles and bounded child durations; before launch ownership change. New broker real SessionStart observed2801.698ms. |
+| Quit/reopen survival | Passed with user-enabled ChatGPT background activity; disabled-setting teardown limitation recorded in contract. |
+| Twenty human turns | Timing/exit0/completion sample passed; aggregate native Hook stats evidence still pending. |
+| Native down/missing-model/nonresponsive/off | Pending. Isolated fake tests do not substitute native evidence. |
+| Claude acceptance | Deferred independently. |
+
+No final acceptance, implementation commit or push is inferred.
