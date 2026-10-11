@@ -180,3 +180,8 @@ Approvedstop5 PID97641 exit0; exactsavedrealconfiguration restoredatomically0600
 | Claude acceptance | Deferred independently. |
 
 No final acceptance, implementation commit or push is inferred.
+
+
+### Native failure/off protocol prepared (2026-10-11)
+
+Existing failure/off tests4passed, missing-load test1passed, timingwrapper18passed. Controlleractualmissing/off/hangpreflightpassed temporaryhomes/freeports withsilence/exit0/samePIDnot_ready/nooffmutations/boundedtimeoutnospawn. Shipping3launch+16Stage1blocks and2timingblocks unchanged. Plan2026-10-11-laya-harness-codex-failure-acceptance.md records reviewedtoolreuse/protocol. Private drafts/diffs/rollback under .workbench/codex-failure-acceptance: off, missing, nonresponsiveport64972, existingtiminghookdiff. Liveconfig/hooksunchanged. Nextuserexactbatchapproval coversatmostfivehealth-verifiedstops, threeconfigs/restorations, timinghooks/restoration andownedtemporarylistener; thenusernativeReload/startup/down/missing3/off2/listener1captures. Aggregate20Hookstatsevidence separate; Claude deferred; implementationuncommitted/nopush.
