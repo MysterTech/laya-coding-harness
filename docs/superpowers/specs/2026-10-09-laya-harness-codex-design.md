@@ -147,3 +147,6 @@ After user approval of the exact project-hook diff and one service stop, install
 ### C10 macOS launch ownership fix
 
 Use the approved [macOS service-launch contract](2026-10-10-laya-harness-macos-service-launch-design.md) for Darwinproduction. C1–C7 deadlines/refused-onlyoutcomes/state/advice/logging are unchanged. C9 diagnostic instrument is not shipping. The jobmustbeoutsideCodexapplicationcoalition with KeepAlivefalse/RunAtLoadfalse/ThrottleInterval0; §4.3 directPopen is replaced by asynchronousbroker pluslaunchd-ownedservice. Isolatednativepreflightpassed lifecycle/noautorestart/cleanup, not appquitacceptance. Confirm realreadyPIDsurvival afterexactreviewedpromotion; no implicitC7pass.
+
+
+C10 environmental qualification (2026-10-11): the tested macOS desktop launch requires ChatGPT Background App Activity enabled for survival across Cmd+Q. Record that user-controlled setting in C7 survival evidence; disabled-state job teardown remains a documented limitation. Hooks/setup never alter the permission. See the launch contract's background-activity prerequisite. Other C7 sample/display/down/off gates remain unchanged.

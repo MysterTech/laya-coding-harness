@@ -847,3 +847,6 @@ are kept git-ignored in `.claude/spike/` until the test fixtures are made from t
 ### macOS launch ownership amendment (2026-10-10)
 
 §4.3 is amended by the approved macOS launch-ownership contract: launchd registration is on-demand only and does not change900-secondidlepolicy. §6 adds shim gates for privateimmutabledefinitions, loadedjobidentity, boundedrejections, concurrentlaunchers and exactcleanup, plus controller temporaryfake-job lifecyclegates. §11 still defers residentservice/idlepolicy and general launchagent management; only appcoalition independence is advanced to fix confirmednativeSIGTERM onhostexit. Claude nativeacceptance remainsrequiredindependently.
+
+
+macOS setup guidance qualification (2026-10-11): the tested Codex desktop host requires ChatGPT Background App Activity enabled for the launchd service to survive host quit. The permission is user-controlled; no setup/hook/OS-setting automation is added. Disabled-state teardown remains a documented environmental limitation, with fail-open/restart-on-refusal unchanged. The launch-ownership contract and Codex C10 record the paired native evidence. Claude survival remains independently unverified.

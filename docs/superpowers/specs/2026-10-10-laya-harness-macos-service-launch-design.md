@@ -58,3 +58,12 @@ Production EnvironmentVariables contains only HF_HUB_OFFLINE1; it does not seria
 Inactive registrations persist only for the current gui-login domain and have no launchtrigger. The sameidentity is reused on a laterrefusedconnection; interpreteridentity changes create a distinctowneddefinition, neverreplace/killoldlivejob. No automaticstalejobscan/removal inhook orsetup. Exactownedcleanup supports isolatedtests/authorizedrollback; oldinactivejobs may remainuntillogout, with no residentmodel/process. This is the minimal verified lifecycle; further registrycleanup/uninstall policy is separatefuturework.
 
 Controller productiongates: fullfakeClaude/Codexregression; cachedrealmodeloffline; generatedliteralblocks versusworkbenchandrepo. Livepromotionstillrequires reviewedexactdiff andauthorizedordinaryservicestop/start. Nativeappquit survival must be confirmed onrealreadyPID afterpromotion, notmarkedpassedfromprobe.
+
+
+## macOS background activity prerequisite (2026-10-11)
+
+For the tested Codex desktop installation, ChatGPT background activity must be enabled in System Settings → General → Login Items & Extensions → Background App Activity to retain this service after Cmd+Q. The user controls this permission; setup and hooks must not change it, bypass it, or install login startup to compensate. Disabled background activity may cause macOS to unload this job on app exit; a later refused hook request can register/start it again under the existing fail-open rules. This is a documented environmental limitation, not a claim of shutdown survival with permission disabled.
+
+Evidence: with background activity disabled, loginwindow explicitly unloaded the exact job and PID changed90998→91932 within197.549s. After the user enabled it, unchanged code/config/hooks retainedPID91932 ready/real after90.881s and job runs1. Native acceptance records the permission state alongside PID, ready state and elapsed time; acceptance of this limitation remains with the user. The enabled-state observation does not prove other apps/OS versions or retroactively pass the original direct-Popen launch.
+
+Setup guidance must explain this dependency and its settings path. Enabling background activity does not enable laya startup at login, KeepAlive, or permanent model residency; the job still starts on refusal and exits when idle. No CLI behavior change is required for this documentation pass. Apple documents the setting at https://support.apple.com/en-au/125671.
