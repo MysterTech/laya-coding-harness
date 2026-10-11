@@ -224,3 +224,10 @@ Nextuser Settings→Hooks Reload/review, freshprojectchat `Reply with just: down
 Native screenshot10:31:45 Runs6/Blocked0/Failed0, completedprojectSS/UPS, real lightp.83 Luna low. Unique readyturn01a12955-dd99-72c0-977b-2f936c0865b9/session01a12955-d6bb-75b1-9b01-d9be26932d1d decidedreal264.7ms. MatchingtimingSS3484.865ms/UPS342.522ms exit0/notimeout; separatecontrollerUPS766.746ms notpartofcapture. ReadyrealPID1057, ownedjobruns8. Private down-ready-observed.json.
 
 Approvedstop2 consumedPID1057 exit0. Immediate down-baseline.json at05:02:45.506Z: sessionabove, stoppedPID1057, jobruns8, decisions178946/client760/service14385/launcher0/receipts4535bytes, realconfighashunchanged/timinghookhashunchanged. Serviceconfirmedrefused. Nextuserreturns SAMEreadychat and sends `Reply with just: down check.`; screenshots expandedUPSwithnoMessage andcompletedreply. No othercontrollerprompt first, as itcouldrestartservice. Aftermatchingrow/receipt/newjobrun/ready verify, userappquit/reopenwithin2min; noadditionalstopbeforethat. Threeapprovedstopsremain missing/off/nonresponsive; noaskagain. No otherlivechanges.
+
+
+### Native down-path startup observed; app-exit survival capture next
+
+User screenshot10:34:02 Runs2/Blocked0/Failed0, completedUPS/noMessage. Samechat unique turn01a12958-3ef5-7831-af2e-db17342a0c3b/session01a12955-d6bb-75b1-9b01-d9be26932d1d has started_service/shown_textnull/coldtrue, row54.6ms. Matchingadvisor-child receipt132.351ms/exit0/notimeout, then separatecontroller765.923ms receipt. Ownedjobruns8→9 exactlyoneexecution; newPID1621 readyreal afterUPSexit, clientgrowth0/launcher0/service685bytes expectedmodelstartup. Config/timinghooks unchanged. Private down-observed.json.
+
+Immediate down-survival-before.json readyPID1621/jobruns9 saved05:05:18Z. NextuserCmd+Q/reopenwithin2min thenreturnhere done; samePID/readiness/jobrun required tofinishC7down-pathsurvival. No stop/configchangebeforethat. Threebatchstopsremain alreadyapprovedmissing/off/nonresponsive. No additionalacceptanceinferred; shippingimplementationuncommitted/nopush.
