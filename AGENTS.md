@@ -1,5 +1,7 @@
 # AGENTS.md: working rules and handoff state for laya-harness
 
+**Current sequencing override (user approved 2026-10-11):** umbrella §8.1 permits the verified implementation baseline commit after Codex acceptance, with Claude acceptance pending on `codex/claude-acceptance`. Continue Stage 2 on `main`; preserve WIP/workbench evidence. This supersedes older statements below that all implementation must remain uncommitted until Claude acceptance. No push or user-level hook installation approved.
+
 Codex reads this file automatically. Claude Code built stage 0 up to the point recorded below; continue from here.
 
 ## The user's rules (from their global instructions; they apply to every agent)
@@ -269,3 +271,17 @@ User saiddone afterrequestednativeReload/review. Diskhooks remainbyte-identicalp
 ### Existing20 native Hook stats audit limited by tool access
 
 User requestedproceed. ComputerusegetApp(ChatGPT) was denied: appcom.openai.codex notallowedforsafety; noalternateUIautomation attempted. Supported read_thread connector paginated timingchat01a125d2-7003-7203-a31d-929833714887, titleverbatim `Reply with timing check 1`. Exportcontains21completedturns (20numberedchecks plus extra2rerun), errornull/userMessage+agentMessageonly, nohookstatentries. Confirmscompletedreplies butdoesnotestablishnativeBlocked/Failed/timeoutcounts. Priorreceipts20exit0/timeout0 stillvalid; nativeaggregateflag staysfalse. NextuserinspectexistingchatHookstats orreportifstatsunavailable; no newtimingrerun assumed/authorized. No product/liveconfig/hookchanges; restoredproductionreloadconfirmed. Claudeacceptancepending, implementationuncommitted/nopush.
+## Latest acceptance evidence limitation (2026-10-11)
+
+The controller opened the saved `Reply with timing check 1` chat directly; the user reports its hook icon is missing. Original sample timings/exit codes/completed replies remain valid, but its native Hook stats cannot be checked through the observed UI. Do not infer native counts or waive C7. Next audit saved screenshots from the other native checks: C7 permits at least 20 human prompts across checks, not necessarily the original timing chat alone. Determine the distinct evidenced prompt count before asking for any additional capture. No live changes or new timing rerun approved; Claude acceptance remains deferred and implementation uncommitted.
+
+
+
+### Native Hook stats census complete
+
+Saved native observations count18distincthumanprompts: BOTH1/warmreal1/cold3/diagnosticstartup1/display4/down2/missing3/off2/listener1. AllcompletedprojectUPS/zeroBlockedFailed/no visible native timeout. Ambiguousfirstrealscreenshot/probe/controllerfollowups/originaltimingchat excluded. Sixareprelaunchpromotion,12postpromotion; independentpostfixsurvivalrecordunchanged. QA listsdistinctturnIDs andOFFreceiptidentifiers. C7allowsacrosschecks: twoadditionalordinaryhumanpromptcaptureswithimmediateHookstatscanclosethe20UIcountwithoutretiming20/changingconfig/hooks. Stillpendinguntilobserved; no finalacceptance/implementationcommit/push; Claudedeferred.
+
+
+### Final native UI count complete (2026-10-11)
+
+Twofinalchecks in `Run final hook check` matchedunique turns01a1298e-5097-7513-bda8-1906db208ade/01a1298f-82db-7ae3-b94e-24b12038e675; screenshotsRuns6/2Blocked0Failed0/completedUPS/no native timeout. Connectorconfirmsbothcompletederrornull/expectedreplies. Bothdecidedreal,row1149.9/584.7ms supportonly; firstexactlightp.92Lunalow,secondnot_first_prompt/planbelowthreshold. Privatefinal-hooks-observed.json0600. QA censusnow20distinctUI-evidencedhumanprompts acrosschecks; C7UIcountclosed withoutwaivingcontract orrecoveringoriginaltimingchatstats. Original20externaltimingsamplevalidseparately. Codexacceptancegatesobservedwithbackgroundpermissionqualification/latencyvariabilityretained. Claudeacceptancestilldeferred; finalimplementationcommit/pushpendingprocedure. No livechanges.

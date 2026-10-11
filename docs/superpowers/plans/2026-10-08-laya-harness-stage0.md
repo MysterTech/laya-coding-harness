@@ -5932,3 +5932,16 @@ def test_real_service_answers_the_stage0_questions(configured, home):
 | §5 failure handling | 5, 6 |
 | §6 testing | 1–8 |
 | §8 acceptance, §10 install | 8 |
+
+
+## Approved acceptance sequencing amendment (2026-10-11)
+
+Umbrella §8.1 supersedes the original Task 8 Step 8 ordering for this development baseline.
+The user approved: commit updated acceptance documentation first; check the final literal
+blocks (Stage 1 and macOS launch blocks supersede earlier versions); run full fake and cached
+offline real-model gates; commit the verified implementation once on `main`; create
+`codex/claude-acceptance` from that commit without switching the live checkout. Preserve
+WIP refs and workbench artifacts rather than deleting them at Step 8 while Claude is pending.
+Task 8 Steps 5–7 and 9 remain unfinished for Claude; user-level hook installation and push
+still require their own approval. Stage 2 proceeds on `main`, without marking stage 0 accepted.
+No literal implementation blocks are changed by this amendment.

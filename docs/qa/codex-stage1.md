@@ -175,7 +175,7 @@ Approvedstop5 PID97641 exit0; exactsavedrealconfiguration restoredatomically0600
 | Real prediction | Observed decided/real; latency variability retained. |
 | Three cold startup samples | Recorded3/3 first decided profiles and bounded child durations; before launch ownership change. New broker real SessionStart observed2801.698ms. |
 | Quit/reopen survival | Passed with user-enabled ChatGPT background activity; disabled-setting teardown limitation recorded in contract. |
-| Twenty human turns | Timing/exit0/completion sample passed; aggregate native Hook stats evidence still pending. |
+| Twenty human turns | Original 20-prompt timing/exit0/completion sample passed; native UI evidence now covers 20 distinct prompts across checks, as censused below. Original timing-chat Hook stats remain unavailable. |
 | Native down/missing-model/nonresponsive/off | Passed via approved native batch; timing-hook restoration awaits native reload. |
 | Claude acceptance | Deferred independently. |
 
@@ -244,3 +244,51 @@ User saiddone afterrequestednativeReload/review. Diskhooks remainbyte-identicalp
 ### Existing20 native Hook stats audit limited by tool access
 
 User requestedproceed. ComputerusegetApp(ChatGPT) was denied: appcom.openai.codex notallowedforsafety; noalternateUIautomation attempted. Supported read_thread connector paginated timingchat01a125d2-7003-7203-a31d-929833714887, titleverbatim `Reply with timing check 1`. Exportcontains21completedturns (20numberedchecks plus extra2rerun), errornull/userMessage+agentMessageonly, nohookstatentries. Confirmscompletedreplies butdoesnotestablishnativeBlocked/Failed/timeoutcounts. Priorreceipts20exit0/timeout0 stillvalid; nativeaggregateflag staysfalse. NextuserinspectexistingchatHookstats orreportifstatsunavailable; no newtimingrerun assumed/authorized. No product/liveconfig/hookchanges; restoredproductionreloadconfirmed. Claudeacceptancepending, implementationuncommitted/nopush.
+### Original timing-chat Hook stats unavailable (2026-10-11)
+
+After the controller opened `Reply with timing check 1` directly by its saved chat ID, the user reported that the hook icon is missing. Native Hook stats for that original sample are therefore unavailable through the observed UI. The 20 recorded advisor-child timings, exit codes and completed replies remain valid; native blocked/failed/timeout-notice counts remain unverified. This is an evidence limitation, not evidence of a hook failure. C7 is unchanged and is not waived. Before proposing another capture, audit the already saved native screenshots across the other acceptance checks against C7's requirement of at least 20 human prompts across checks. No new timing run, live configuration change or hook change is authorized by this report.
+
+
+
+### Native Hook stats evidence census (2026-10-11)
+
+The saved screenshot observations and reduced records identify **18 distinct human prompts** with completed project UserPromptSubmit, zero Blocked/Failed entries and no visible native hook-timeout notice. Counts are prompts, not the panel’s Runs total, which includes SessionStart and unrelated plugin events. Two OFF prompts have no decision rows by contract; their distinct numbered prompts, screenshots and receipts identify them.
+
+| Check | Distinct prompt / turn | Private reduced record |
+|---|---|---|
+| BOTH | `01a125a1-e0f2-7263-b2c0-61c161e193d1` | `.workbench/codex-acceptance-both-observed.json` |
+| Warm real | `01a125b4-1031-7931-a5b1-4faa31fc4906` | `.workbench/codex-acceptance-real-warm-observed.json` |
+| Cold 1 | `01a12671-c204-7682-b5d8-cd9dd58da8b6` | `.workbench/codex-timing/cold-round-1-observed.json` |
+| Cold 2 | `01a12674-5aa0-7132-b1fd-9778bce4a6e8` | `.workbench/codex-timing/cold-round-2-observed.json` |
+| Cold 3 | `01a12676-8815-7fb0-8b17-c8495a6b3a42` | `.workbench/codex-timing/cold-round-3-observed.json` |
+| Diagnostic startup | `01a126c5-7151-7712-8640-c50e02213265` | `.workbench/codex-exit-diagnostic/startup-observed.json` |
+| Light | `01a12931-6b93-7720-9149-acb0eeb2c701` | `.workbench/codex-remaining/light-observed.json` |
+| Heavy | `01a12934-fa64-70d1-b0d8-7df0ae4720b5` | `.workbench/codex-remaining/heavy-observed.json` |
+| Plan-Only | `01a12937-38bb-7bd0-95b6-f1d932ec0549` | `.workbench/codex-remaining/plan-only-observed.json` |
+| Silent | `01a1293a-062b-7690-b178-fdf725900e51` | `.workbench/codex-remaining/silent-observed.json` |
+| Down ready | `01a12955-dd99-72c0-977b-2f936c0865b9` | `.workbench/codex-failure-acceptance/down-ready-observed.json` |
+| Down prompt | `01a12958-3ef5-7831-af2e-db17342a0c3b` | `.workbench/codex-failure-acceptance/down-observed.json` |
+| Missing model | `01a12966-df19-7012-8408-d1d9442a12c5` | `.workbench/codex-failure-acceptance/missing-observed.json` |
+| Missing model | `01a12967-4e50-7912-aa9e-f13eef504ba8` | `.workbench/codex-failure-acceptance/missing-observed.json` |
+| Missing model | `01a12967-6489-7220-980a-2c1f932dff5f` | `.workbench/codex-failure-acceptance/missing-observed.json` |
+| Off | `off check 1, receipt 2026-10-11T05:24:04.636682Z` | `.workbench/codex-failure-acceptance/off-observed.json` |
+| Off | `off check 2, receipt 2026-10-11T05:24:14.513213Z` | `.workbench/codex-failure-acceptance/off-observed.json` |
+| Nonresponsive listener | `01a12974-f17b-7a83-bf33-c4b02bc6b7d8` | `.workbench/codex-failure-acceptance/nonresponsive-observed.json` |
+
+The first real-mode screenshot is excluded because its matching fresh session is ambiguous. The synthetic capability probe, controller follow-ups, OS-only startup checks, and the original timing chat with unavailable Hook stats are also excluded. Six counted prompts precede the macOS launch promotion (BOTH, warm real, three cold checks and diagnostic startup); 12 follow promotion. These historical records establish user-channel/no-block observations, not post-fix survival; the separate post-fix enabled-background survival evidence remains required and recorded. The independently timed 20-prompt sample is retained separately, without inferring native UI counts from it.
+
+C7 permits observations across checks, so two further ordinary human prompts with immediate Hook stats captures can complete the 20-prompt UI evidence count without repeating the timing sample or changing hooks/configuration. They must each show completed project UserPromptSubmit, zero Blocked/Failed and no native timeout notice, and be matched to distinct completed replies. Until captured, the UI evidence requirement remains open. No contract waiver or final implementation acceptance is recorded.
+
+
+### Final two native Hook stats captures (2026-10-11)
+
+User screenshots at 11:33:34 and 11:34:11 local show Runs 6 and 2 respectively, zero Blocked/Failed, completed project UserPromptSubmit and no native hook-timeout notice. First capture includes completed project SessionStart and exact real advice `laya · light task (p=0.92) → GPT-6 Luna at low effort fits this task`; second has no Message. Both match distinct turns in `Run final hook check`, session `01a1298e-43fc-7d71-a86f-406c59119785`:
+
+| Check | Turn | Outcome | Row latency (supporting only) |
+|---|---|---|---|
+| 1 | `01a1298e-5097-7513-bda8-1906db208ade` | decided/real, exact shown advice | 1149.9 ms |
+| 2 | `01a1298f-82db-7ae3-b94e-24b12038e675` | decided/real, model suppressed as not_first_prompt, plan below_threshold | 584.7 ms |
+
+Supported read_thread confirms both turns completed with error null and respective replies `final hook check 1.` and `final hook check 2.`. Initial exact prompt match returned no rows because the actual inputs contain literal Markdown backticks; unique turn IDs and observed text establish the match without altering runtime data. Reduced record: `.workbench/codex-final-hooks-observed.json` (0600).
+
+The census now covers **20 distinct human prompts** with zero native Blocked/Failed and no visible native hook-timeout notice. This closes the outstanding C7 native UI sample-count requirement across checks; original 20-prompt external timing evidence remains separate and valid. It does not recover or verify the original timing-chat Hook stats, imply all census prompts have complete-process timing receipts, or waive the independent Claude acceptance. No source, live config or hook changes occurred. Codex documented acceptance gates are now observed, with the macOS background-permission qualification and recorded latency variability retained. Final implementation commit/push remains pending the project’s acceptance procedure.

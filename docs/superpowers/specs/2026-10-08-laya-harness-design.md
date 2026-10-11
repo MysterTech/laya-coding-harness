@@ -728,6 +728,28 @@ acceptance):
    gate.
 5. **Off switch.** With `laya-harness mode off`, no row is written and nothing is started.
 
+### 8.1 Approved split acceptance and development baseline (2026-10-11)
+
+The user approved committing the verified shared core, both adapters and macOS launch fix
+as a development baseline after Codex acceptance, while Claude native acceptance waits for
+its usage reset. This is an exception to the original acceptance-before-implementation-commit
+sequence, not a claim that stage 0 is fully accepted. Preserve the remaining Claude §8
+checks, visual comparison and exact user-level installation approval on the local branch
+`codex/claude-acceptance`, created from that baseline. Keep shared dependencies and both
+adapters on `main`; do not physically split the package. Continue Stage 2 measurement design
+and implementation on `main` through the existing docs-first/workbench/review gates.
+
+Before the baseline commit, commit documentation separately, verify literal plan bytes with
+later Stage 1/macOS blocks superseding earlier blocks, run full fake and offline cached
+real-model gates, and confirm no private configuration or acceptance artifacts are staged.
+Preserve WIP refs/workbench evidence until Claude acceptance is completed. No push or
+user-level hook installation is authorized by this development-baseline approval.
+
+Claude acceptance resumes from the preserved QA record and private baselines. Any resulting
+code fix must follow docs-first/TDD/review and be brought back to `main`; refresh shared-core
+gates against the final merged tree. Use isolated branch checkouts if necessary, and do not
+point live editable installs or registered hooks at a different checkout implicitly.
+
 ## 9. Build order and process gates
 
 1. Sign-off on this document and the mockup (§4.12 plus check 1's screenshots).
