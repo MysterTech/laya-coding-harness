@@ -210,3 +210,10 @@ Nextprepareconcrete nativeC7down/missing-model/nonresponsive/offprotocol and agg
 ### Native failure/off protocol prepared (2026-10-11)
 
 Existing failure/off tests4passed, missing-load test1passed, timingwrapper18passed. Controlleractualmissing/off/hangpreflightpassed temporaryhomes/freeports withsilence/exit0/samePIDnot_ready/nooffmutations/boundedtimeoutnospawn. Shipping3launch+16Stage1blocks and2timingblocks unchanged. Plan2026-10-11-laya-harness-codex-failure-acceptance.md records reviewedtoolreuse/protocol. Private drafts/diffs/rollback under .workbench/codex-failure-acceptance: off, missing, nonresponsiveport64972, existingtiminghookdiff. Liveconfig/hooksunchanged. Nextuserexactbatchapproval coversatmostfivehealth-verifiedstops, threeconfigs/restorations, timinghooks/restoration andownedtemporarylistener; thenusernativeReload/startup/down/missing3/off2/listener1captures. Aggregate20Hookstatsevidence separate; Claude deferred; implementationuncommitted/nopush.
+
+
+### Failure/off batch approved; timing hooks installed awaiting reload
+
+User explicitlyapproved protocol/drafts/timinghooks/restorations/atmostfivestops andownedtemporarylistener. Stop1 consumedPID99617 exit0; exacttimingdraft installedatomically0600, SHA b7987033a3fca3aa841f88c399c418a591c64b10d4a9afade160f63dc324bc46. Realconfigbyte-identical unchangedSHA1a1f5b7c451aa559684d35a587e914f0269dfd8979c40162171f41a06001170f. Privatebatch-start-baseline.json: decisions173464/client760/service13700/launcher0/receipts4169bytes. Fourapprovedstopsremain; exactconfigs/rollback/timingproductionhooks preserved.
+
+Nextuser Settings→Hooks Reload/review, freshprojectchat `Reply with just: down check ready.` and screenshotprojectSS/UPS. Controllerverify readyPID/jobruns/matchingrow+receipts then approvedstop2; userreturns SAMEfreshchat for downcheckprompt, no interveningcontrolleruserprompt thatcouldrestartservice. No failureconfiginstalledyet/listenerstartedyet. No repeatedapprovalquestionforbatch. Shippingimplementationuncommitted/nopush; Claudegatesdeferred.
