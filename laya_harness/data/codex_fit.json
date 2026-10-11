@@ -1,0 +1,8 @@
+{
+  "classes": {
+    "quick": [{"family": "luna", "effort": "low"}, {"family": "sol", "effort": "low"}],
+    "routine": [{"family": "sol", "effort": "medium"}],
+    "multi_file": [{"family": "sol", "effort": "high"}],
+    "architecture": [{"family": "astra", "effort": "xhigh"}]
+  }
+}

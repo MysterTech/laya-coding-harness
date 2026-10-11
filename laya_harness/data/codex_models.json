@@ -1,0 +1,8 @@
+{
+  "source": "Installed Codex picker metadata and official OpenAI model pages, checked 2026-10-10: https://developers.openai.com/api/docs/models/gpt-6-luna, https://developers.openai.com/api/docs/models/gpt-6.1-sol, https://developers.openai.com/api/docs/models/gpt-6-astra. Supported recommendation subset; standard list prices per million tokens.",
+  "models": [
+    {"id": "gpt-6-luna", "display": "GPT-6 Luna", "family": "luna", "version": "6", "price": {"input": 0.1, "output": 0.5}, "effort_levels": ["low", "medium", "high", "xhigh", "max"], "in_picker": true, "allowed": true},
+    {"id": "gpt-6.1-sol", "display": "GPT-6.1 Sol", "family": "sol", "version": "6.1", "price": {"input": 2.0, "output": 10.0}, "effort_levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "in_picker": true, "allowed": true},
+    {"id": "gpt-6-astra", "display": "GPT-6 Astra", "family": "astra", "version": "6", "price": {"input": 10.0, "output": 50.0}, "effort_levels": ["low", "medium", "high", "xhigh", "max", "ultra"], "in_picker": true, "allowed": true}
+  ]
+}

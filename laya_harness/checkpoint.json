@@ -1,0 +1,21 @@
+{
+  "repo": "aac6fef/laya-mlx",
+  "revision": "047678560251f28113ee8f5df4be82102c7bf336",
+  "weights_sha256": "b9c07bf14be2fa5c78a9193a3e6d840ac80e89e62fc40f425834c3d8a6eaa3de",
+  "files": [
+    "model.safetensors",
+    "rl_agent_config.json",
+    "encoder/config.json",
+    "tokenizer/*",
+    "mlx_config.json"
+  ],
+  "required": [
+    "model.safetensors",
+    "rl_agent_config.json",
+    "encoder/config.json",
+    "tokenizer/tokenizer.json",
+    "tokenizer/tokenizer_config.json"
+  ],
+  "settings": {"dtype": "float16", "batch_size": 1, "pad_to_multiple": 128, "max_len": 512},
+  "warmup_words": [0, 60, 150, 260, 380, 600]
+}

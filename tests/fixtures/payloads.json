@@ -1,0 +1,85 @@
+{
+  "_source": "Shapes captured in check 4 (spec Appendix C) in the desktop Code tab on 2026-10-08; identifiers and prompt text replaced.",
+  "session_start_startup": {
+    "session_id": "sess-1",
+    "transcript_path": "TRANSCRIPT",
+    "cwd": "/tmp/project",
+    "scratchpad_dir": "/tmp/scratch",
+    "hook_event_name": "SessionStart",
+    "source": "startup"
+  },
+  "session_start_resume": {
+    "session_id": "sess-1",
+    "transcript_path": "TRANSCRIPT",
+    "cwd": "/tmp/project",
+    "scratchpad_dir": "/tmp/scratch",
+    "hook_event_name": "SessionStart",
+    "source": "resume",
+    "session_title": "Title",
+    "seconds_since_last_response": 190,
+    "context_tokens": 117824,
+    "prompt_cache_likely_expired": false,
+    "estimated_cache_write_usd": 1.1782
+  },
+  "user_prompt_human": {
+    "session_id": "sess-1",
+    "transcript_path": "TRANSCRIPT",
+    "cwd": "/tmp/project",
+    "scratchpad_dir": "/tmp/scratch",
+    "prompt_id": "prompt-1",
+    "permission_mode": "auto",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "rename the variable foo to bar in utils.py",
+    "session_title": "Title"
+  },
+  "user_prompt_task_notification": {
+    "session_id": "sess-1",
+    "transcript_path": "TRANSCRIPT",
+    "cwd": "/tmp/project",
+    "scratchpad_dir": "/tmp/scratch",
+    "prompt_id": "prompt-2",
+    "permission_mode": "auto",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "<task-notification>\n<task-id>br0jok66y</task-id>\n<status>completed</status>\n</task-notification>",
+    "session_title": "Title"
+  },
+  "user_prompt_agent_message": {
+    "session_id": "sess-1",
+    "transcript_path": "TRANSCRIPT",
+    "cwd": "/tmp/project",
+    "scratchpad_dir": "/tmp/scratch",
+    "prompt_id": "prompt-3",
+    "permission_mode": "auto",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "<agent-message from=\"afa14421701a5128d\">\n[Subagent hand-back] done\n</agent-message>",
+    "session_title": "Title"
+  },
+  "user_prompt_cross_session": {
+    "session_id": "sess-1",
+    "transcript_path": "TRANSCRIPT",
+    "cwd": "/tmp/project",
+    "scratchpad_dir": "/tmp/scratch",
+    "prompt_id": "prompt-4",
+    "permission_mode": "auto",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "<cross-session-message from=\"local_708eeb92\" name=\"Other session\">\nreply OK\n</cross-session-message>",
+    "session_title": "Title"
+  },
+  "post_model_switch": {
+    "session_id": "sess-1",
+    "transcript_path": "TRANSCRIPT",
+    "cwd": "/tmp/project",
+    "scratchpad_dir": "/tmp/scratch",
+    "prompt_id": "prompt-5",
+    "hook_event_name": "PostModelSwitch",
+    "from_model": "claude-opus-4-6",
+    "to_model": "claude-opus-4-7",
+    "requested_model": "claude-opus-4-7",
+    "source": "sdk",
+    "context_tokens": 86688,
+    "prompt_cache_warm": true,
+    "cache_ttl": "1h",
+    "pricing": "catalog",
+    "estimated_cache_write_usd": 0.8669
+  }
+}

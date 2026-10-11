@@ -1,0 +1,17 @@
+{
+  "source": "Picker: docs/reference/model-picker-2026-10-08.png. IDs and prices: platform.claude.com models overview and Haiku 5.5 page (2026-10-08). Older versions' effort levels: platform.claude.com effort docs (2026-10-08).",
+  "models": [
+    {"id": "claude-opus-5-5", "display": "Opus 5.5", "family": "opus", "version": "5.5", "price": {"input": 4.0, "output": 20.0}, "effort_levels": ["low", "medium", "high", "xhigh", "max"], "in_picker": true, "menu": "main", "allowed": true},
+    {"id": "claude-sonnet-5-5", "display": "Sonnet 5.5", "family": "sonnet", "version": "5.5", "price": {"input": 2.0, "output": 10.0}, "effort_levels": ["low", "medium", "high", "xhigh", "max"], "in_picker": true, "menu": "main", "allowed": true},
+    {"id": "claude-haiku-5-5", "display": "Haiku 5.5", "family": "haiku", "version": "5.5", "price": {"input": 0.1, "output": 0.5, "input_above_100k": 0.5, "output_above_100k": 2.5}, "effort_levels": ["low", "medium", "high", "xhigh", "max"], "in_picker": true, "menu": "main", "allowed": true},
+    {"id": "claude-opus-5", "display": "Opus 5", "family": "opus", "version": "5", "price": {"input": 5.0, "output": 25.0}, "effort_levels": ["low", "medium", "high", "xhigh", "max"], "in_picker": true, "menu": "more", "allowed": false},
+    {"id": "claude-opus-4-8", "display": "Opus 4.8", "family": "opus", "version": "4.8", "price": {"input": 5.0, "output": 25.0}, "effort_levels": ["low", "medium", "high", "xhigh", "max"], "in_picker": true, "menu": "more", "allowed": false},
+    {"id": "claude-opus-4-7", "display": "Opus 4.7", "family": "opus", "version": "4.7", "price": {"input": 5.0, "output": 25.0}, "effort_levels": ["low", "medium", "high", "xhigh", "max"], "in_picker": true, "menu": "more", "allowed": false},
+    {"id": "claude-opus-4-6", "display": "Opus 4.6", "family": "opus", "version": "4.6", "price": {"input": 5.0, "output": 25.0}, "effort_levels": ["low", "medium", "high", "max"], "in_picker": true, "menu": "more", "allowed": false},
+    {"id": "claude-sonnet-5", "display": "Sonnet 5", "family": "sonnet", "version": "5", "price": {"input": 2.0, "output": 10.0}, "effort_levels": ["low", "medium", "high", "xhigh", "max"], "in_picker": true, "menu": "more", "allowed": false},
+    {"id": "claude-sonnet-4-6", "display": "Sonnet 4.6", "family": "sonnet", "version": "4.6", "price": {"input": 3.0, "output": 15.0}, "effort_levels": ["low", "medium", "high", "max"], "in_picker": true, "menu": "more", "allowed": false},
+    {"id": "claude-haiku-4-5", "display": "Haiku 4.5", "family": "haiku", "version": "4.5", "price": {"input": 1.0, "output": 5.0}, "effort_levels": [], "in_picker": true, "menu": "more", "allowed": false},
+    {"id": "claude-fable-5-1", "display": "Fable 5.1", "family": "fable", "version": "5.1", "price": {"input": 10.0, "output": 50.0}, "effort_levels": ["low", "medium", "high", "xhigh", "max"], "in_picker": true, "menu": "main", "allowed": false},
+    {"id": "claude-fable-5", "display": "Fable 5", "family": "fable", "version": "5", "price": {"input": 10.0, "output": 50.0}, "effort_levels": ["low", "medium", "high", "xhigh", "max"], "in_picker": true, "menu": "more", "allowed": false}
+  ]
+}

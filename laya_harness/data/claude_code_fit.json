@@ -1,0 +1,8 @@
+{
+  "classes": {
+    "quick": [{"family": "haiku", "effort": "low"}, {"family": "sonnet", "effort": "low"}],
+    "routine": [{"family": "sonnet", "effort": "medium"}],
+    "multi_file": [{"family": "opus", "effort": "high"}],
+    "architecture": [{"family": "opus", "effort": "xhigh"}]
+  }
+}

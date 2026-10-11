@@ -12,8 +12,14 @@ dependencies = ["laya-mlx==0.3.0"]
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 
+[project.scripts]
+laya-harness = "laya_harness.__main__:main"
+
 [tool.setuptools.packages.find]
 include = ["laya_harness*"]
+
+[tool.setuptools.package-data]
+laya_harness = ["*.json", "questions/*.json", "data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
