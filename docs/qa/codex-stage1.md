@@ -143,3 +143,6 @@ The promoted launchd broker passed repo gates (534 fake tests and cached real-mo
 ### Remaining display preparation (2026-10-11)
 
 Background dependency is now documented in launch/umbrella/Codex contracts and README (80af706). Four private fake configuration drafts plus exact real rollback/diffs are prepared under .workbench/codex-remaining; isolated controller preflight passed exact light/heavy/plan-only/silent copy, exit0/empty stderr and one decided fake row each. Native screenshots not inferred. Live config remains real/show; next exact batch review authorizes five stops/config transitions and user fresh-chat captures. Plan: 2026-10-11-laya-harness-codex-remaining-acceptance.md.
+
+
+Remaining display batch approved (2026-10-11): all four exact fake drafts and real restoration, with five health-verified stops. Stop1 PID91932 exit0; light draft installed0600/byte-identical, confirmed down, productionhooks unchanged. Light baseline decisions142009/client760/service12330/launcher0bytes. Native light capture pending; four remaining stops already authorized. No result inferred from isolated preflight.
