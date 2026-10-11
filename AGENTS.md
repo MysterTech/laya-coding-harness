@@ -264,3 +264,8 @@ Controlledlistenerexecsession77701/PID5813 terminatedbyCtrl+C; port64972refusedv
 ### Production hook restoration reload confirmed
 
 User saiddone afterrequestednativeReload/review. Diskhooks remainbyte-identicalproductionrollback andreal/showconfiguration exactsavedbytes. Shipping3launch+16Stage1blocks match literalplans. Temporarylistenerremoved; allnativefailure/off/display/survivalcapturescomplete asqualified. Original20manualsample observed count20/exit0count20/timeout0/completedturns20/max690.045ms; native_hook_stats_aggregate_verified stillfalse. Need actualnativeHookstats observations acrossexisting20sample, not infercountsfromtimingreceipts or rerunthealreadycompletedtimingsample. Claudeacceptancedeferred; noimplementationcommit/push yet.
+
+
+### Existing20 native Hook stats audit limited by tool access
+
+User requestedproceed. ComputerusegetApp(ChatGPT) was denied: appcom.openai.codex notallowedforsafety; noalternateUIautomation attempted. Supported read_thread connector paginated timingchat01a125d2-7003-7203-a31d-929833714887, titleverbatim `Reply with timing check 1`. Exportcontains21completedturns (20numberedchecks plus extra2rerun), errornull/userMessage+agentMessageonly, nohookstatentries. Confirmscompletedreplies butdoesnotestablishnativeBlocked/Failed/timeoutcounts. Priorreceipts20exit0/timeout0 stillvalid; nativeaggregateflag staysfalse. NextuserinspectexistingchatHookstats orreportifstatsunavailable; no newtimingrerun assumed/authorized. No product/liveconfig/hookchanges; restoredproductionreloadconfirmed. Claudeacceptancepending, implementationuncommitted/nopush.
