@@ -1,6 +1,6 @@
 # macOS service-launch QA
 
-Status: preflight and isolated production workbench passed; live promotion and native app-exit acceptance pending.
+Status: production fix promoted and automated gates passed; native app-exit survival pending.
 
 Workbenchtwofiles: initial18stubRED, first40GREEN; reviewloadedidentity/diagnostics corrected via8REDthen48GREEN. Native ten-secondlaunchthrottle discovery led to one-definitionassertionREDthen48GREEN; controller48passed2.40s, independent48passed2.37s/APPROVED. Final generatedpreflightplan c22dda8; WIP task-1 throughr3 preserved. No UI/copychanges, visualN/A.
 
@@ -11,3 +11,5 @@ Final native round3 with ThrottleInterval0: SS277.436ms/empty/exit0; UPS75.296ms
 Production workbench: initial 32 failed/1 passed behavioral stub, separate Darwin-routing/config-diagnostics/blocked-config REDs, controller 47 passed in 4.36 s and independent reviewer 47 passed in 4.35 s, APPROVED/no findings. Full fake suite 534 passed, 1 deselected in 99.52 s; cached offline real-model 1 passed, 534 deselected in 5.43 s. Initial sandbox free-port permission failures were rerun with temporary sockets allowed. Three literal plan blocks match; only launchd.py, spawn.py and test_launchd.py differ from production.
 
 Actual production broker native test: fake temporary home/free port, startup 52.403 ms, own named job coalitions and exact loaded definition, private 0700 directories/0600 plist and log, quiet idle exit/no restart, requested restart 44.682 ms, SIGTERM stop/no restart. Exact cleanup true, job absent (113). Reduced private production-native-observed.json. No production home writes, real service stops, hook changes or production job registration. Prepared exact production.diff and production-job.draft.plist for user review; desktop quit/reopen survival still pending.
+
+Live promotion (2026-10-11): user approved exact three-file diff/job draft and one health-verified real-service stop. PID90436 stopped, all three verified blocks promoted byte-identically. Repo full fake 534 passed, 1 deselected in99.32s; cached offline real gate 1 passed, 534 deselected in3.70s. All 16 Stage1 blocks still match. Ordinary Codex SessionStart exited0 with empty stdout/stderr in2801.698ms; real service ready PID90998, exact approved job definition and loaded identity, resource/jetsam coalitions named for own job, runs1. Home/launch directory0700, plist/log0600. Real config and hooks hashes unchanged. Private production-start-observed.json records baseline. No native desktop survival result yet; one stop approval consumed.
