@@ -1,5 +1,7 @@
 # AGENTS.md: working rules and handoff state for laya-harness
 
+**Current state:** Implementation baseline committed as `753271f`; local `codex/claude-acceptance` points to that baseline. Active checkout remains `main`. Stage 2A written proposal is awaiting review. No push or live setting changes.
+
 **Current sequencing override (user approved 2026-10-11):** umbrella §8.1 permits the verified implementation baseline commit after Codex acceptance, with Claude acceptance pending on `codex/claude-acceptance`. Continue Stage 2 on `main`; preserve WIP/workbench evidence. This supersedes older statements below that all implementation must remain uncommitted until Claude acceptance. No push or user-level hook installation approved.
 
 Codex reads this file automatically. Claude Code built stage 0 up to the point recorded below; continue from here.
@@ -296,3 +298,19 @@ cachedreal1passed534deselected3.84s. Failureobservationretained/causenotproved/n
 Commitverifiedimplementationafterdocs, createcodex/claude-acceptanceatbaselinewithoutcheckout;
 retainallWIPrefs/workbench. ClaudeQAhasexplicitremainingchecks/currentrealconfignote.
 Stage2Aofflinewrittenproposalexistsbutnotapprovedforimplementation. No push/livechanges.
+
+
+### Baseline committed; Stage 2 design on main
+
+Implementationcommit753271f contains49verifiedsource/test/packagingfiles. Branch
+codex/claude-acceptance createdatsameSHAwithoutcheckout; activebranchmain. PriorWIPrefs
+andprivateevidencepreserved. ExistingREADME/licensepreservedindoccommits45ad5cc/39bb3cf.
+No push/liveconfig/hooks/servicechanges. Earlieruncommittedimplementationstatementsarehistory.
+
+Stage2Aproposal: docs/superpowers/specs/2026-10-11-laya-harness-measure-design.md.
+Offlineexplicitinputreaders/independentlabels/sessiongroupholdouts/descriptivereports;
+noautomatedthreshold/fit-tablechanges/training/downloads. Localpreflightinspectedschema
+keynamesonlyfromoneCodex/oneClaudetranscript; noprivatedataexported. Written-specapproval
+requiredbeforeskillwriting-plans/verifiedliteralplan/implementation. Globalworkflowpath
+~/.Codex/workflowsmissing; readexisting~/.claude/workflows/two-agent-swe-workflow.md
+asprofilepoints. CodexroutingexceptioncontinueswhileClaudecreditsunavailable.
